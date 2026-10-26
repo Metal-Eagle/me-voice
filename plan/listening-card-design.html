@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Larger listening card</title>
+<style>
+  :root { --bg: #eceef1; --page: #1c1e21; --muted: #5f6670; --border: #dde1e6; --card: #fff;
+    --blue: #1e9bff; --red: #ff3b30; --green: #34c759; --yellow: #ffd60a; --purple: #af52de; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111315; --page: #e8eaed; --muted: #9aa1a8; --border: #2b2f35; --card: #1b1e21; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--page); font: 15px/1.55 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 32px 16px 80px; }
+  h1 { font-size: 1.8rem; margin: 0 0 6px; }
+  h2 { font-size: 1.05rem; margin: 36px 0 4px; }
+  p { color: var(--muted); margin: 0 0 12px; max-width: 760px; }
+  .desk { position: relative; height: 330px; border-radius: 14px; overflow: hidden; border: 1px solid var(--border);
+    background: linear-gradient(135deg, #3a6ea5, #7aa6d6); }
+  .win { position: absolute; left: 8%; right: 8%; top: 200px; bottom: -20px; background: #f7f8fa; border-radius: 10px 10px 0 0; padding: 16px 22px; color: #333; }
+  .win i { display: block; height: 9px; background: #e2e5ea; border-radius: 5px; margin: 11px 0; }
+
+  /* the card: 720 x 156, drawn at 1:1 */
+  .card { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: 720px; max-width: 94%; height: 156px;
+    border-radius: 22px; background: rgba(24,26,30,.96); color: #f2f4f6; overflow: hidden;
+    box-shadow: 0 18px 50px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.08); }
+  .head { position: absolute; left: 26px; right: 26px; top: 0; height: 60px; display: flex; align-items: center; gap: 12px; }
+  .dot { position: relative; width: 12px; height: 12px; border-radius: 50%; background: var(--red); flex: none; }
+  .dot::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; background: var(--red); opacity: .22; }
+  .dot.y { background: var(--yellow); } .dot.y::after { background: var(--yellow); }
+  .dot.g { background: var(--green); } .dot.g::after { background: var(--green); }
+  .label { font-size: 13px; font-weight: 600; letter-spacing: .14em; color: #aab1b9; }
+  .pill { font-size: 12px; font-weight: 600; color: #e8eaed; background: rgba(255,255,255,.1); border-radius: 999px; padding: 2px 10px; }
+  .ring { width: 20px; height: 20px; }
+  .wave { margin-left: auto; display: flex; align-items: center; gap: 3px; height: 40px; }
+  .wave b { width: 4px; border-radius: 2px; background: var(--blue); display: block; }
+  .wave.idle b { background: #555d66; }
+  .rule { position: absolute; left: 26px; right: 26px; top: 60px; height: 1px; background: rgba(255,255,255,.08); }
+  .body { position: absolute; left: 26px; right: 26px; top: 72px; bottom: 18px; font-size: 25px; line-height: 36px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+  .body .old { color: rgba(242,244,246,.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .body .new { white-space: nowrap; overflow: hidden; }
+  .body .hint { color: #7a828c; font-size: 17px; }
+  .dots i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); margin-left: 6px; vertical-align: middle; }
+  .bar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--red); border-radius: 0 2px 2px 0; }
+  .cap { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .notes { color: var(--muted); font-size: 14px; max-width: 820px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Larger listening card</h1>
+  <p>The card grows from 460×74 to <b>720×156</b> (drawn at 1:1 and scaled by the display), so it reads well on a big screen. Bigger status line and wave, 25 px words on <b>two lines</b> (the newest words always visible, the line above dimmed), and the stop countdown becomes a bar that drains along the bottom edge.</p>
+
+  <h2>Listening</h2>
+  <div class="desk"><div class="card">
+    <div class="head"><span class="dot"></span><span class="label">LISTENING</span><span class="pill">Chat</span><span class="wave" data-n="44"></span></div>
+    <div class="rule"></div>
+    <div class="body"><div class="old">so I looked at the numbers from last week and they</div><div class="new">mostly line up with what we expected<span class="dots"><i></i><i style="opacity:.6"></i><i style="opacity:.3"></i></span></div></div>
+  </div><div class="win"><i style="width:60%"></i><i style="width:80%"></i></div></div>
+  <p class="cap">Profile name shows as a pill, only when it isn't Default.</p>
+
+  <h2>You stopped talking: 2 second countdown</h2>
+  <div class="desk"><div class="card">
+    <div class="head"><span class="dot"></span><span class="label">LISTENING · STOPPING IN 1 S</span>
+      <svg class="ring" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="none" stroke="#3a3f46" stroke-width="2.5"/><circle cx="10" cy="10" r="8" fill="none" stroke="#ff3b30" stroke-width="2.5" stroke-dasharray="50.3" stroke-dashoffset="25" transform="rotate(-90 10 10)" stroke-linecap="round"/></svg>
+      <span class="wave idle" data-n="44" data-quiet="1"></span></div>
+    <div class="rule"></div>
+    <div class="body"><div class="old">so I looked at the numbers from last week and they</div><div class="new">mostly line up with what we expected</div><div class="hint" style="position:absolute;right:0;bottom:0">Keep talking to continue · Esc to cancel</div></div>
+    <div class="bar" style="width:50%"></div>
+  </div><div class="win"><i style="width:60%"></i><i style="width:80%"></i></div></div>
+  <p class="cap">The words stay visible; the hint sits at the bottom right and the red bar drains to the left.</p>
+
+  <h2>Transcribing and pasted</h2>
+  <div class="desk" style="height:250px"><div class="card">
+    <div class="head"><span class="dot y"></span><span class="label">TRANSCRIBING</span><span class="wave idle" data-n="44" data-quiet="1"></span></div>
+    <div class="rule"></div>
+    <div class="body"><div class="old">so I looked at the numbers from last week and they</div><div class="new">mostly line up with what we expected<span class="dots"><i style="background:#7a828c"></i><i style="background:#7a828c;opacity:.6"></i><i style="background:#7a828c;opacity:.3"></i></span></div></div>
+  </div><div class="win" style="top:200px"></div></div>
+  <div class="desk" style="height:250px;margin-top:14px"><div class="card">
+    <div class="head"><span class="dot g"></span><span class="label">PASTED</span><span class="wave idle" data-n="44" data-quiet="1"></span></div>
+    <div class="rule"></div>
+    <div class="body"><div class="old">So I looked at the numbers from last week and they</div><div class="new">mostly line up with what we expected.</div></div>
+  </div><div class="win" style="top:200px"></div></div>
+
+  <ul class="notes">
+    <li>Drawn in <code>src/overlay.rs</code> with the same hand-drawn canvas; only sizes, one extra text line and the bottom bar are new.</li>
+    <li>Bug fixed on the way: the countdown hint replaced your words the whole time when "stop after silence" was 2 s. It now appears only after about half a second of quiet, and the words stay.</li>
+  </ul>
+</main>
+<script>
+  document.querySelectorAll('.wave').forEach(w => {
+    const n = +w.dataset.n, quiet = w.dataset.quiet;
+    for (let i = 0; i < n; i++) {
+      const b = document.createElement('b');
+      b.style.height = (quiet ? 4 : 4 + Math.round(32 * Math.abs(Math.sin(i * 0.8) * Math.cos(i * 0.31)))) + 'px';
+      w.appendChild(b);
+    }
+  });
+</script>
+</body>
+</html>

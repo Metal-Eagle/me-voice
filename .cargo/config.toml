@@ -1,0 +1,6 @@
+# Build settings for whisper-rs on Windows: tell bindgen where LLVM and its headers are.
+# Build with .\scripts\build.ps1 so the Visual Studio C headers are found as well.
+# Adjust the clang version folder ("23") if you install a different LLVM version.
+[env]
+LIBCLANG_PATH = "C:\\Program Files\\LLVM\\bin"
+BINDGEN_EXTRA_CLANG_ARGS = "\"-IC:/Program Files/LLVM/lib/clang/23/include\""

@@ -1,0 +1,26 @@
+name: Windows build
+
+# Run it from the Actions tab ("Run workflow"); a tag like v0.9.0 runs it through release.yml.
+# The installer is uploaded as the "me-voice-windows" artifact (installer/output/me-voice-setup-<version>.exe).
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The runner has Visual Studio, LLVM and Rust; Inno Setup is added here.
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Run tests
+        shell: pwsh
+        run: .\scripts\build.ps1 -Test
+      - name: Build app and installer
+        shell: pwsh
+        run: .\scripts\build.ps1 -Installer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: me-voice-windows
+          path: installer/output/*.exe

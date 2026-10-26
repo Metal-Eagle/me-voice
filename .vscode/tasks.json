@@ -1,0 +1,57 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "me-voice: build (debug)",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File ${workspaceFolder}/scripts/build.ps1",
+      "group": {
+        "kind": "build"
+      },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "me-voice: build (release)",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File ${workspaceFolder}/scripts/build.ps1 -Release",
+      "group": {
+        "kind": "build"
+      },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "me-voice: build installer",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File ${workspaceFolder}/scripts/build.ps1 -Installer",
+      "group": {
+        "kind": "build"
+      },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "me-voice: test",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File ${workspaceFolder}/scripts/build.ps1 -Test",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "me-voice: run (debug)",
+      "type": "shell",
+      "command": "${workspaceFolder}/target/debug/me-voice.exe",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "dependsOn": "me-voice: build (debug)",
+      "problemMatcher": []
+    },
+    {
+      "label": "me-voice: open settings window",
+      "type": "shell",
+      "command": "${workspaceFolder}/target/debug/me-voice.exe settings",
+      "dependsOn": "me-voice: build (debug)",
+      "problemMatcher": []
+    }
+  ]
+}

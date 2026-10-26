@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listening pill designs</title>
+<style>
+  :root {
+    --bg: #eceef1; --page: #1c1e21; --muted: #5f6670; --card: #ffffff; --border: #dde1e6;
+    --desk1: #3a6ea5; --desk2: #7aa6d6;
+    --blue: #1e9bff; --red: #ff3b30; --green: #34c759; --yellow: #ffd60a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #111315; --page: #e8eaed; --muted: #9aa1a8; --card: #1b1e21; --border: #2b2f35; }
+  }
+  :root[data-theme="dark"] { --bg: #111315; --page: #e8eaed; --muted: #9aa1a8; --card: #1b1e21; --border: #2b2f35; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--page); font: 15px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 80px; }
+  h1 { font-size: 1.8rem; margin: 0 0 6px; }
+  .lead { color: var(--muted); margin: 0 0 6px; max-width: 720px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 8px; }
+  .controls button { font: inherit; font-size: 13px; border: 1px solid var(--border); background: var(--card); color: var(--page); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+  .controls button.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  section { margin-top: 40px; }
+  h2 { font-size: 1.2rem; margin: 0 0 4px; }
+  .why { color: var(--muted); margin: 0 0 12px; max-width: 720px; }
+  .notes { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 13px; margin: 10px 0 0; padding: 0; list-style: none; }
+  .notes li::before { content: "· "; }
+
+  /* fake desktop the pill floats on */
+  .desk { position: relative; height: 210px; border-radius: 14px; overflow: hidden;
+    background: linear-gradient(135deg, var(--desk1), var(--desk2)); border: 1px solid var(--border); }
+  .desk .win { position: absolute; left: 8%; right: 8%; top: 70px; bottom: -20px; background: #f7f8fa; border-radius: 10px 10px 0 0; box-shadow: 0 10px 30px rgba(0,0,0,.25); padding: 18px 22px; color: #333; font-size: 13px; }
+  .desk .win .line { height: 8px; background: #e2e5ea; border-radius: 4px; margin: 10px 0; }
+  .desk.bottom .win { top: 20px; bottom: 60px; border-radius: 10px; }
+  .top { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); }
+  .bot { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); }
+  canvas { display: block; }
+  /* Single line that always shows the newest words (the start scrolls out on the left). */
+  .txt { display: flex; justify-content: flex-end; overflow: hidden; min-width: 0;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px); mask-image: linear-gradient(to right, transparent 0, #000 24px); }
+  .txt span { white-space: nowrap; flex: none; }
+
+  /* A: capsule */
+  .a { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 18px 0 8px; border-radius: 999px;
+    background: rgba(20,22,25,.92); color: #f2f4f6; box-shadow: 0 8px 24px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.06); width: 520px; max-width: 92%; }
+  .a .mic { width: 30px; height: 30px; border-radius: 50%; background: var(--red); display: grid; place-items: center; flex: none; position: relative; }
+  .a .mic::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--red); opacity: .5; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0% { transform: scale(.9); opacity: .6 } 100% { transform: scale(1.35); opacity: 0 } }
+  .a .txt { flex: 1; font-size: 14.5px; }
+  .a .time { font-variant-numeric: tabular-nums; color: #9aa1a8; font-size: 13px; flex: none; }
+
+  /* B: two-line card */
+  .b { width: 460px; max-width: 92%; border-radius: 16px; background: rgba(28,30,34,.94); color: #f2f4f6; padding: 10px 16px 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.07); }
+  .b .head { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #9aa1a8; letter-spacing: .04em; text-transform: uppercase; }
+  .b .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .35 } }
+  .b .head canvas { margin-left: auto; }
+  .b .txt { font-size: 15.5px; margin-top: 4px; }
+
+  /* C: island */
+  .c { background: #000; color: #fff; border-radius: 22px; height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 14px;
+    width: 230px; transition: width .45s cubic-bezier(.2,.9,.3,1.2); box-shadow: 0 6px 18px rgba(0,0,0,.4); overflow: hidden; }
+  .c.open { width: 540px; max-width: 92%; }
+  .c .ic { width: 22px; height: 22px; border-radius: 50%; background: var(--red); flex: none; display: grid; place-items: center; }
+  .c .txt { flex: 1; font-size: 14px; opacity: 0; transition: opacity .3s .2s; }
+  .c.open .txt { opacity: 1; }
+  .c .time { font-size: 12.5px; color: #8e8e93; font-variant-numeric: tabular-nums; flex: none; }
+
+  /* D: captions */
+  .d { width: 640px; max-width: 94%; background: rgba(12,13,15,.82); color: #fff; border-radius: 12px; padding: 12px 18px; display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  .d .meter { display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; height: 34px; flex: none; }
+  .d .txt { font-size: 19px; line-height: 1.35; flex: 1; }
+  .d .hint { font-size: 11px; color: #8e959e; flex: none; text-align: right; line-height: 1.3; }
+
+  /* E: orb */
+  .e { display: flex; align-items: center; gap: 12px; }
+  .e .orb { width: 56px; height: 56px; border-radius: 50%; position: relative; flex: none; display: grid; place-items: center;
+    background: radial-gradient(circle at 35% 30%, #5cc0ff, #1e7bff 60%, #1450c0); box-shadow: 0 6px 20px rgba(30,123,255,.55); }
+  .e .ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid rgba(30,155,255,.55); }
+  .e .bubble { background: rgba(255,255,255,.96); color: #1c1e21; border-radius: 16px 16px 16px 4px; padding: 9px 14px; font-size: 14.5px; width: 380px; max-width: 70vw;
+    box-shadow: 0 8px 22px rgba(0,0,0,.25); }
+
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; background: var(--blue); color: #fff; border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: middle; }
+  @media (max-width: 560px) { .desk { height: 230px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Listening pill: five redesigns</h1>
+  <p class="lead">The pill is the small bar at the top of the screen while you dictate. Each design below is animated with a made-up sound wave and text, so you can see how it feels.</p>
+  <p class="lead">All five can be built with the app's current drawing code. Real blur behind the window isn't possible, so "glass" looks become a dark, slightly see-through background.</p>
+  <div class="controls">
+    <button class="on" data-phase="listen">Listening</button>
+    <button data-phase="work">Transcribing</button>
+    <button data-phase="done">Done</button>
+  </div>
+
+  <section>
+    <h2>1 · Capsule <span class="tag">closest to now</span></h2>
+    <p class="why">A fully rounded capsule. On the left, a red mic button with a soft pulse ring. In the middle, the newest words. On the right, a timer. The sound wave sits inside the mic button's pulse instead of taking up space.</p>
+    <div class="desk"><div class="win"><b>Teams · Chat</b><div class="line" style="width:70%"></div><div class="line" style="width:45%"></div></div>
+      <div class="top"><div class="a"><div class="mic" id="aMic"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 18v4" stroke="#fff" stroke-width="2"/></svg></div><div class="txt" data-text><span></span></div><div class="time" data-time>0:00</div></div></div>
+    </div>
+    <ul class="notes"><li>Small and calm</li><li>Timer shows how long you've been talking</li><li>Pulse speed follows your voice</li></ul>
+  </section>
+
+  <section>
+    <h2>2 · Two-line card</h2>
+    <p class="why">A small card. The top line holds a status label ("Listening", "Transcribing") with a compact wave on the right. Below it, your words in larger text, so long sentences are easier to follow.</p>
+    <div class="desk"><div class="win"><b>Outlook · New mail</b><div class="line" style="width:60%"></div><div class="line" style="width:80%"></div></div>
+      <div class="top"><div class="b"><div class="head"><span class="dot" data-dot></span><span data-label>Listening</span><canvas id="bWave" width="120" height="22"></canvas></div><div class="txt" data-text><span></span></div></div></div>
+    </div>
+    <ul class="notes"><li>Most readable text</li><li>Clear status</li><li>A little taller than now</li></ul>
+  </section>
+
+  <section>
+    <h2>3 · Island</h2>
+    <p class="why">A black pill, inspired by the iPhone's "Dynamic Island". It starts small (dot and timer) and smoothly stretches open as words arrive, then shrinks back when done. It feels like part of the system.</p>
+    <div class="desk"><div class="win"><b>Slack · #team</b><div class="line" style="width:55%"></div><div class="line" style="width:35%"></div></div>
+      <div class="top"><div class="c" id="island"><div class="ic"></div><canvas id="cWave" width="60" height="22"></canvas><div class="txt" data-text><span></span></div><div class="time" data-time>0:00</div></div></div>
+    </div>
+    <ul class="notes"><li>Very modern</li><li>Stays tiny until there is text</li><li>Animation needs a few extra frames</li></ul>
+  </section>
+
+  <section>
+    <h2>4 · Live captions (bottom of the screen)</h2>
+    <p class="why">Like TV subtitles: a wide bar near the bottom with large text, a vertical level meter on the left and a hint like "Esc to cancel" on the right. The top of your screen stays free.</p>
+    <div class="desk bottom"><div class="win"><b>Word · Report.docx</b><div class="line" style="width:80%"></div><div class="line" style="width:65%"></div><div class="line" style="width:72%"></div></div>
+      <div class="bot"><div class="d"><canvas id="dMeter" width="10" height="34"></canvas><div class="txt" data-text><span></span></div><div class="hint">Esc to cancel<br><span data-label>Listening</span></div></div></div>
+    </div>
+    <ul class="notes"><li>Biggest text: easy to check while talking</li><li>Doesn't cover tabs or the address bar</li><li>Takes more room</li></ul>
+  </section>
+
+  <section>
+    <h2>5 · Orb with speech bubble</h2>
+    <p class="why">A glowing blue circle that swells and shrinks with your voice, with your words in a speech bubble next to it. Playful and easy to spot from the corner of your eye.</p>
+    <div class="desk"><div class="win"><b>Notepad</b><div class="line" style="width:50%"></div><div class="line" style="width:70%"></div></div>
+      <div class="top"><div class="e"><div class="orb" id="orb"><div class="ring" id="ring"></div><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 18v4" stroke="#fff" stroke-width="2"/></svg></div><div class="bubble" data-text><span></span></div></div></div>
+    </div>
+    <ul class="notes"><li>Most eye-catching</li><li>Fun, less "office"</li><li>The bubble grows with the text</li></ul>
+  </section>
+</main>
+
+<script>
+  const sentence = "Hi team, quick update: the release notes are ready for review and I will share the planning tomorrow morning.";
+  let phase = "listen", t0 = performance.now(), shown = 0, levels = new Array(40).fill(0);
+
+  document.querySelectorAll(".controls button").forEach(b => b.onclick = () => {
+    document.querySelectorAll(".controls button").forEach(x => x.classList.remove("on"));
+    b.classList.add("on"); phase = b.dataset.phase;
+    if (phase === "listen") { t0 = performance.now(); shown = 0; }
+  });
+
+  function level(t) {
+    const speaking = phase === "listen" && (Math.sin(t / 900) > -0.6);
+    return speaking ? Math.min(1, 0.25 + Math.abs(Math.sin(t / 97) * Math.cos(t / 233)) * 0.9 + Math.random() * 0.15) : 0.03;
+  }
+  function bars(ctx, w, h, data, colour, gap = 2) {
+    ctx.clearRect(0, 0, w, h);
+    const n = data.length, bw = Math.max(2, w / n - gap);
+    ctx.fillStyle = colour;
+    data.forEach((v, i) => {
+      const bh = Math.max(2, v * (h - 2)); const x = i * (w / n);
+      ctx.beginPath(); ctx.roundRect(x, (h - bh) / 2, bw, bh, bw / 2); ctx.fill();
+    });
+  }
+  function tick(now) {
+    const t = now - t0;
+    levels.push(level(now)); levels.shift();
+    if (phase === "listen") shown = Math.min(sentence.length, Math.floor(t / 55));
+    else shown = sentence.length;
+    const text = shown ? sentence.slice(0, shown) : (phase === "listen" ? "Listening…" : "");
+    const secs = Math.floor(t / 1000), time = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+    const label = { listen: "Listening", work: "Transcribing…", done: "Pasted" }[phase];
+    const colour = { listen: "#ff3b30", work: "#ffd60a", done: "#34c759" }[phase];
+    const wave = phase === "listen" ? "#1e9bff" : "#555d66";
+
+    document.querySelectorAll("[data-text] span").forEach(s => s.textContent = text);
+    // Short text starts on the left; long text keeps its newest words visible on the right.
+    document.querySelectorAll(".txt").forEach(box => {
+      const overflow = box.firstElementChild.offsetWidth > box.clientWidth;
+      box.style.justifyContent = overflow ? "flex-end" : "flex-start";
+      box.style.webkitMaskImage = box.style.maskImage = overflow ? "" : "none";
+    });
+    document.querySelectorAll("[data-time]").forEach(s => s.textContent = phase === "done" ? "✓" : time);
+    document.querySelectorAll("[data-label]").forEach(s => s.textContent = label);
+    document.querySelectorAll("[data-dot]").forEach(s => s.style.background = colour);
+
+    const last = levels[levels.length - 1];
+    const aMic = document.getElementById("aMic"); aMic.style.background = colour;
+    aMic.style.transform = `scale(${1 + last * 0.12})`;
+    bars(document.getElementById("bWave").getContext("2d"), 120, 22, levels.slice(-26), wave);
+    bars(document.getElementById("cWave").getContext("2d"), 60, 22, levels.slice(-12), wave);
+    const island = document.getElementById("island");
+    island.classList.toggle("open", shown > 0 && phase !== "done" || phase === "work");
+    island.querySelector(".ic").style.background = colour;
+    const m = document.getElementById("dMeter").getContext("2d");
+    m.clearRect(0, 0, 10, 34);
+    for (let i = 0; i < 8; i++) { m.fillStyle = i < Math.round(last * 8) ? (i > 5 ? "#ffd60a" : "#34c759") : "#2c3036"; m.fillRect(1, 34 - (i + 1) * 4.2, 8, 3); }
+    const s = 1 + last * 0.16;
+    document.getElementById("orb").style.transform = `scale(${s})`;
+    document.getElementById("ring").style.transform = `scale(${1 + last * 0.45})`;
+    document.getElementById("ring").style.opacity = String(0.3 + last * 0.6);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>

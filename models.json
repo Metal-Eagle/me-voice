@@ -1,0 +1,116 @@
+{
+  "models": [
+    {
+      "id": "futo-en-244",
+      "name": "English 244 (most accurate)",
+      "url": "https://keyboard.futo.org/voice-input-english-244.bin",
+      "file": "voice-input-english-244.bin",
+      "sha256": "58FBE949992DAFED917590D58BC12CA577B08B9957F0B3E0D7EE71B64BED3AA8",
+      "languages": ["en"],
+      "acft": true,
+      "sizeMb": 252
+    },
+    {
+      "id": "futo-en-74",
+      "name": "English 74 (balanced)",
+      "url": "https://keyboard.futo.org/voice-input-english-74.bin",
+      "file": "voice-input-english-74.bin",
+      "sha256": "E9B4B7B81B8A28769E8AA9962AA39BB9F21B622CF6A63982E93F065ED5CAF1C8",
+      "languages": ["en"],
+      "acft": true,
+      "sizeMb": 78
+    },
+    {
+      "id": "futo-en-39",
+      "name": "English 39 (fastest)",
+      "url": "https://keyboard.futo.org/voice-input-english-39.bin",
+      "file": "voice-input-english-39.bin",
+      "sha256": "4B5480AA1B14A7EFC5B578EF176510970A898049671C3CD237285B3E3F6BFBFC",
+      "languages": ["en"],
+      "acft": true,
+      "sizeMb": 42
+    },
+    {
+      "id": "futo-multi-244",
+      "name": "Multilingual 244",
+      "url": "https://keyboard.futo.org/voice-input-multilingual-244.bin",
+      "file": "voice-input-multilingual-244.bin",
+      "sha256": null,
+      "languages": ["auto", "en", "nl", "de", "fr", "es", "it", "pt", "pl", "ru", "zh", "ja", "ko"],
+      "acft": true,
+      "sizeMb": 252
+    },
+    {
+      "id": "futo-multi-74",
+      "name": "Multilingual 74",
+      "url": "https://keyboard.futo.org/voice-input-multilingual-74.bin",
+      "file": "voice-input-multilingual-74.bin",
+      "sha256": null,
+      "languages": ["auto", "en", "nl", "de", "fr", "es", "it", "pt", "pl", "ru", "zh", "ja", "ko"],
+      "acft": true,
+      "sizeMb": 78
+    },
+    {
+      "id": "futo-multi-39",
+      "name": "Multilingual 39",
+      "url": "https://keyboard.futo.org/voice-input-multilingual-39.bin",
+      "file": "voice-input-multilingual-39.bin",
+      "sha256": null,
+      "languages": ["auto", "en", "nl", "de", "fr", "es", "it", "pt", "pl", "ru", "zh", "ja", "ko"],
+      "acft": true,
+      "sizeMb": 42
+    },
+    {
+      "id": "whisper-large-v3-turbo-q8",
+      "name": "Whisper large-v3 turbo (best for Dutch)",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin",
+      "file": "ggml-large-v3-turbo-q8_0.bin",
+      "sha256": "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1",
+      "languages": ["auto", "en", "nl", "de", "fr", "es", "it", "pt", "pl", "ru", "zh", "ja", "ko"],
+      "acft": false,
+      "sizeMb": 834
+    },
+    {
+      "id": "whisper-large-v3-turbo-q5",
+      "name": "Whisper large-v3 turbo (smaller, good for Dutch)",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+      "file": "ggml-large-v3-turbo-q5_0.bin",
+      "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+      "languages": ["auto", "en", "nl", "de", "fr", "es", "it", "pt", "pl", "ru", "zh", "ja", "ko"],
+      "acft": false,
+      "sizeMb": 548
+    },
+    {
+      "id": "parakeet-v3-int8",
+      "name": "Parakeet TDT 0.6B v3 (int8)",
+      "engine": "parakeet",
+      "file": "parakeet-tdt-0.6b-v3-int8",
+      "sha256": null,
+      "languages": ["auto", "en", "nl", "de", "fr", "es", "it", "pt", "pl", "bg", "hr", "cs", "da", "et", "fi", "el", "hu", "lv", "lt", "mt", "ro", "sk", "sl", "sv", "ru", "uk"],
+      "acft": false,
+      "sizeMb": 640,
+      "files": [
+        {
+          "url": "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/encoder-model.int8.onnx",
+          "file": "encoder-model.int8.onnx",
+          "sha256": "6139d2fa7e1b086097b277c7149725edbab89cc7c7ae64b23c741be4055aff09"
+        },
+        {
+          "url": "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/decoder_joint-model.int8.onnx",
+          "file": "decoder_joint-model.int8.onnx",
+          "sha256": "eea7483ee3d1a30375daedc8ed83e3960c91b098812127a0d99d1c8977667a70"
+        },
+        {
+          "url": "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/nemo128.onnx",
+          "file": "nemo128.onnx",
+          "sha256": "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f"
+        },
+        {
+          "url": "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main/vocab.txt",
+          "file": "vocab.txt",
+          "sha256": null
+        }
+      ]
+    }
+  ]
+}

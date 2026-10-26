@@ -1,0 +1,380 @@
+<title>mc-voice Icon Picker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: header with controls, then one section per favourite (original first, then iterations), then hybrids. */
+:root {
+  --bg: #F3F5FA; --surface: #FFFFFF; --line: #DDE2EC; --fg: #141821; --weak: #5F6878;
+  --accent: #1E9BFF; --pick: #FF8000; --strip-dark: #1B1F27; --strip-light: #E9ECF2;
+  --display: "Outfit", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0E1117; --surface: #171B23; --line: #262C38; --fg: #E8EBF1; --weak: #8C95A6;
+  --accent: #4DB2FF; --pick: #FF9A33; --strip-dark: #0A0C10; --strip-light: #DDE1E9; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0E1117; --surface: #171B23; --line: #262C38; --fg: #E8EBF1; --weak: #8C95A6;
+  --accent: #4DB2FF; --pick: #FF9A33; --strip-dark: #0A0C10; --strip-light: #DDE1E9; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--body); line-height: 1.5; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: end; justify-content: space-between; margin-bottom: 28px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(28px, 5vw, 44px); line-height: 1.05; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+h1 span { color: var(--accent); }
+.lede { margin: 8px 0 0; color: var(--weak); max-width: 62ch; }
+.controls { display: flex; flex-direction: column; gap: 6px; }
+.controls label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--weak); font-weight: 500; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); flex-wrap: wrap; }
+.seg button { font: 500 13px var(--body); color: var(--fg); background: none; border: 0; padding: 7px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.seg i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.pickbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; margin-bottom: 8px; padding: 10px 14px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line); display: flex; gap: 12px; align-items: center; font-size: 14px; }
+.pickbar svg { width: 32px; height: 32px; flex: none; }
+.pickbar b { font-family: var(--display); }
+.pickbar code { font-family: var(--mono); font-size: 12px; background: var(--bg); padding: 2px 6px; border-radius: 6px; }
+
+section { margin-top: 36px; }
+section > h2 { font-family: var(--display); font-weight: 700; font-size: 24px; margin: 0; text-wrap: balance; }
+section > p { margin: 2px 0 14px; color: var(--weak); font-size: 14px; max-width: 70ch; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; position: relative; transition: border-color .15s, transform .15s; }
+.card:hover { transform: translateY(-2px); }
+.card.picked { border-color: var(--pick); box-shadow: 0 0 0 2px var(--pick); }
+.num { font-family: var(--mono); font-size: 12px; color: var(--weak); display: flex; justify-content: space-between; }
+.tag { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--line); }
+.hero { position: relative; width: 100%; max-width: 190px; aspect-ratio: 1; margin: 4px auto 0; border-radius: 24%; overflow: hidden; }
+.hero svg { width: 100%; height: 100%; display: block; }
+.hero::after { content: ""; position: absolute; inset: -20%; background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,.55) 50%, transparent 60%);
+  transform: translateX(-120%); animation: sweep 4.5s ease-in-out infinite; animation-delay: var(--d, 0s); pointer-events: none; mix-blend-mode: overlay; }
+@keyframes sweep { 0%, 55% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
+@media (prefers-reduced-motion: reduce) { .hero::after { animation: none; display: none; } .card:hover { transform: none; } }
+.meta h3 { font-family: var(--display); font-weight: 700; font-size: 18px; margin: 0; }
+.meta p { margin: 2px 0 0; color: var(--weak); font-size: 13px; }
+.sizes { display: grid; grid-template-columns: 1fr 1fr; border-radius: 10px; overflow: hidden; }
+.strip { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 6px; }
+.strip.dark { background: var(--strip-dark); } .strip.light { background: var(--strip-light); }
+.strip svg { display: block; }
+.sizecap { font-family: var(--mono); font-size: 11px; color: var(--weak); display: flex; justify-content: space-between; }
+.choose { font: 600 13px var(--body); border: 1px solid var(--line); background: var(--bg); color: var(--fg); padding: 8px; border-radius: 10px; cursor: pointer; }
+.card.picked .choose { background: var(--pick); border-color: var(--pick); color: #1a0d00; }
+.note { margin-top: 28px; color: var(--weak); font-size: 13px; max-width: 70ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Round 3: <span>flat Prism Bars</span></h1>
+      <p class="lede">Twelve flat versions of Prism Bars in the Glass Bolt colours, at the top. Round 2 is still below for comparison. Check the 16 px size before you pick.</p>
+    </div>
+    <div class="controls">
+      <label for="dot-none">Tray status dot</label>
+      <div class="seg" role="group" aria-label="Tray status dot">
+        <button id="dot-none" data-dot="" aria-pressed="true">Off</button>
+        <button id="dot-ready" data-dot="#FF8000" aria-pressed="false"><i style="background:#FF8000"></i>Ready</button>
+        <button id="dot-listen" data-dot="#FF2D2D" aria-pressed="false"><i style="background:#FF2D2D"></i>Listening</button>
+        <button id="dot-trans" data-dot="#FFD21F" aria-pressed="false"><i style="background:#FFD21F"></i>Transcribing</button>
+      </div>
+    </div>
+  </header>
+  <div class="pickbar" id="pickbar">No pick yet. Click <b>&nbsp;Pick this one&nbsp;</b> on the design you like.</div>
+  <div id="sections"></div>
+  <p class="note">Designs marked <b>own dot</b> already have the status dot built in (like today's icon), so the switch recolours that dot instead of adding one. The shine sweep is only on this page. The chosen design gets ported to <code>src/icon.rs</code> and <code>assets/icon.svg</code>.</p>
+</div>
+
+<script>
+const T = 'x="8" y="8" width="240" height="240" rx="60"';
+const tile = (fill) => `<rect ${T} fill="${fill}"/>`;
+const clip = (p) => `<clipPath id="${p}c"><rect ${T}/></clipPath>`;
+const lin = (id, stops, x1=0, y1=0, x2=0, y2=1, extra='') => `<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${extra}>${stops.map((s,i)=>{const [c,o]=Array.isArray(s)?s:[s,1];return `<stop offset="${(i/(stops.length-1)).toFixed(3)}" stop-color="${c}" stop-opacity="${o}"/>`}).join('')}</linearGradient>`;
+const gloss = (p, o=.5) => `${lin(p+'gl',[['#fff',o],['#fff',0]])}<path clip-path="url(#${p}c)" d="M8 8H248V104Q128 140 8 104Z" fill="url(#${p}gl)"/>`;
+const rim = (o=.35, c='#fff') => `<rect x="9.5" y="9.5" width="237" height="237" rx="58.5" fill="none" stroke="${c}" stroke-opacity="${o}" stroke-width="3"/>`;
+const glow = (id, sd=6) => `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${sd}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+const shadow = (id, dy=6, sd=6, c='#001A66', o=.45) => `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="${dy}" stdDeviation="${sd}" flood-color="${c}" flood-opacity="${o}"/></filter>`;
+const spark = (x, y, r, fill='#fff') => `<path d="M${x} ${y-r}Q${x} ${y} ${x+r} ${y}Q${x} ${y} ${x} ${y+r}Q${x} ${y} ${x-r} ${y}Q${x} ${y} ${x} ${y-r}Z" fill="${fill}"/>`;
+const mic = (fill, stroke, sw=14, s=1, cx=128, cy=128) => `<g transform="translate(${cx} ${cy}) scale(${s}) translate(-128 -128)">
+  <rect x="100" y="44" width="56" height="104" rx="28" fill="${fill}"/>
+  <path d="M74 120a54 54 0 0 0 108 0" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round"/>
+  <path d="M128 176v28M102 206h52" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linecap="round"/></g>`;
+/* A glossy marble dot: base colour, darkened edge, white highlight. */
+const gdot = (p, cx, cy, r, color, glowIt=false) => `
+  <radialGradient id="${p}de" cx=".5" cy=".5" r=".5"><stop offset=".55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient>
+  ${glowIt ? `<circle cx="${cx}" cy="${cy}" r="${r+6}" fill="${color}" opacity=".35"/>` : ''}
+  <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${p}de)"/>
+  <ellipse cx="${cx-r*.3}" cy="${cy-r*.38}" rx="${r*.38}" ry="${r*.22}" fill="#fff" opacity=".75"/>`;
+/* Bars with a glass highlight strip down the left side. */
+const glassBar = (x, y, w, h, fill, hl=.45) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${w/2}" fill="${fill}"/>
+  <rect x="${x+w*.2}" y="${y+w*.35}" width="${w*.22}" height="${Math.max(0,h-w*.7)}" rx="${w*.11}" fill="#fff" opacity="${hl}"/>`;
+
+const PRISM5 = ['#FF3B6B','#FF9F0A','#FFD60A','#30D158','#0A84FF'];
+const BOLT = 'M146 34L86 142H124L108 222L172 108H134Z';
+const ORANGE = '#FF8000';
+
+/* Round 3: flat Prism Bars layout in Glass Bolt colours. No gloss, highlights, rims or glows. */
+const R_TILE = p => lin(p+'t',['#3CB4FF','#1E9BFF','#0058D6'],0,0,1,1);
+const R_BOLT = p => lin(p+'y',['#FFF8A6','#FFD000','#FF8A00']);
+const bar = (x, y, w, h, fill) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${w/2}" fill="${fill}"/>`;
+const fdot = (cx, cy, r, c, ring='') => `${ring ? `<circle cx="${cx}" cy="${cy}" r="${r+6}" fill="${ring}"/>` : ''}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${c}"/>`;
+const flat3 = (p, d, [a, b, c], tileFill, opts={}) => {
+  const {w=36, dotR=22, layout='classic', ring=''} = opts;
+  const L = {
+    classic: [[38,96,66],[88,48,162],[138,76,106],[206,160]],
+    eq:      [[38,128,60],[88,48,140],[138,92,96],[206,166]],
+    wave:    [[34,92,72],[88,44,168],[142,72,112],[212,128]],
+  }[layout];
+  const off = (w - 36) / 2;
+  return `<defs>${clip(p)}${R_TILE(p)}${R_BOLT(p)}</defs>${tile(tileFill)}
+    ${bar(L[0][0]-off,L[0][1],w,L[0][2],a)}${bar(L[1][0]-off+ (w>36?4:0),L[1][1],w,L[1][2],b)}${bar(L[2][0]-off+(w>36?8:0),L[2][1],w,L[2][2],c)}
+    ${fdot(L[3][0]+(w>36?6:0),L[3][1],dotR,d,ring)}`;
+};
+
+const families = [
+ { key: 'R', title: 'Round 3: flat Prism Bars in Glass Bolt colours', blurb: 'The Prism Bars layout with the blue, white and yellow-to-orange of Glass Bolt, with all the glass effects removed. R1 is already in the app code, so picking another one means a quick swap.',
+   items: [
+  { name: 'Flat Bolt Bars', desc: 'White bars around a yellow-to-orange middle bar on the blue gradient. Now in the app.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#fff', `url(#${p}y)`, '#fff'], `url(#${p}t)`) },
+
+  { name: 'Solid Colours', desc: 'No gradients at all: brand blue, white and one sunny yellow.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#fff', '#FFD000', '#fff'], '#1E9BFF') },
+
+  { name: 'Warm Steps', desc: 'Bars step from white to yellow to orange, like a level rising.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#fff', '#FFD000', '#FF9F0A'], `url(#${p}t)`, {ring: '#fff'}) },
+
+  { name: 'Sky and Sun', desc: 'Light sky-blue, white and yellow bars. Softer contrast.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#A8DEFF', '#fff', '#FFD000'], `url(#${p}t)`) },
+
+  { name: 'All Bolt', desc: 'All three bars in the bolt gradient; the dot gets a white ring so it stays separate.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, [`url(#${p}y)`, `url(#${p}y)`, `url(#${p}y)`], `url(#${p}t)`, {ring: '#fff'}) },
+
+  { name: 'Flat Bolt', desc: 'Glass Bolt without the glass: the middle bar is a real lightning bolt.', ownDot: true, svg: (p, d) => `
+    <defs>${clip(p)}${R_TILE(p)}${R_BOLT(p)}</defs>${tile(`url(#${p}t)`)}
+    ${bar(30,98,34,62,'#fff')}
+    <path d="M120 36L72 136H104L90 220L144 110H112L132 36Z" fill="url(#${p}y)" stroke-linejoin="round"/>
+    ${bar(152,78,34,102,'#fff')}${fdot(212,162,18,d)}` },
+
+  { name: 'Equaliser', desc: 'Bars stand on one baseline like a level meter.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#fff', `url(#${p}y)`, '#fff'], `url(#${p}t)`, {layout: 'eq'}) },
+
+  { name: 'Waveform', desc: 'Bars centred on one line, with the dot as the next beat.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#fff', `url(#${p}y)`, '#fff'], `url(#${p}t)`, {layout: 'wave'}) },
+
+  { name: 'Chunky', desc: 'Wider bars and a bigger dot. The clearest at 16 px.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#fff', `url(#${p}y)`, '#fff'], `url(#${p}t)`, {w: 44, dotR: 24}) },
+
+  { name: 'Deep Blue', desc: 'One flat deep-blue tile so the yellow pops harder.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#fff', `url(#${p}y)`, '#fff'], '#0A4FD6') },
+
+  { name: 'Night', desc: 'Prism Bars\' dark tile, with blue, yellow and white bars.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#1E9BFF', `url(#${p}y)`, '#fff'], '#14161F') },
+
+  { name: 'Paper', desc: 'Inverted: white tile, blue bars, yellow middle. Good on dark taskbars.', ownDot: true, svg: (p, d) =>
+    flat3(p, d, ['#1E9BFF', `url(#${p}y)`, '#0058D6'], '#FFFFFF') + rim(1, '#D5DCE8') },
+ ]},
+ { key: 'P', title: 'Prism EQ', blurb: 'Rainbow equaliser bars. The original has seven thin bars, which blur together at 16 px, so the iterations use five thicker ones.',
+   items: [
+  { name: 'Prism EQ (original)', desc: 'Seven rainbow bars with a mirror reflection.', svg: p => {
+    const cols=['#FF3B6B','#FF8A00','#FFD000','#3BE07A','#22C3FF','#5B6BFF','#B44CFF'], hs=[48,80,112,136,104,72,44];
+    let bars='', refl='';
+    cols.forEach((c,i)=>{const x=46+i*24,h=hs[i];bars+=`<rect x="${x}" y="${160-h}" width="16" height="${h}" rx="8" fill="${c}"/>`;refl+=`<rect x="${x}" y="168" width="16" height="${h*.35}" rx="8" fill="${c}"/>`});
+    return `<defs>${clip(p)}${lin(p+'f',[['#fff',.4],['#fff',0]])}<mask id="${p}m"><rect x="0" y="168" width="256" height="60" fill="url(#${p}f)"/></mask></defs>
+    ${tile('#101016')}${bars}<g mask="url(#${p}m)">${refl}</g>${gloss(p,.18)}${rim(.12)}`; } },
+
+  { name: 'Prism Bold', desc: 'Five fat glass bars and a softer reflection. Reads clearly in the tray.', svg: p => {
+    const hs=[72,124,164,112,64]; let bars='', refl='';
+    PRISM5.forEach((c,i)=>{const x=34+i*40,h=hs[i];bars+=glassBar(x,172-h,28,h,c);refl+=`<rect x="${x}" y="180" width="28" height="${h*.3}" rx="14" fill="${c}"/>`});
+    return `<defs>${clip(p)}${lin(p+'b',['#1E1E2C','#0B0B12'])}${lin(p+'f',[['#fff',.45],['#fff',0]])}<mask id="${p}m"><rect x="0" y="180" width="256" height="56" fill="url(#${p}f)"/></mask></defs>
+    ${tile(`url(#${p}b)`)}${bars}<g mask="url(#${p}m)">${refl}</g>${gloss(p,.2)}${rim(.14)}`; } },
+
+  { name: 'Prism Daylight', desc: 'The bold bars on a bright white glossy tile with soft shadows.', svg: p => {
+    const hs=[72,124,164,112,64]; let bars='';
+    PRISM5.forEach((c,i)=>{const x=34+i*40,h=hs[i];bars+=glassBar(x,180-h,28,h,c,.5)});
+    return `<defs>${clip(p)}${lin(p+'b',['#FFFFFF','#E4E9F2'])}${shadow(p+'s',6,5,'#3A4560',.28)}</defs>
+    ${tile(`url(#${p}b)`)}<g filter="url(#${p}s)">${bars}</g>${gloss(p,.6)}${rim(1,'#C9D2E0')}`; } },
+
+  { name: 'Prism Neon', desc: 'Glowing bars that fade lighter at the tips, standing on a floor line.', svg: p => {
+    const hs=[72,124,164,112,64]; let defs='', bars='';
+    PRISM5.forEach((c,i)=>{const x=36+i*40,h=hs[i];defs+=lin(`${p}g${i}`,['#fff',c,c]);bars+=`<rect x="${x}" y="${176-h}" width="24" height="${h}" rx="12" fill="url(#${p}g${i})"/>`});
+    return `<defs>${clip(p)}${glow(p+'w',5)}${defs}</defs>
+    ${tile('#0A0A12')}<g filter="url(#${p}w)">${bars}</g><rect x="32" y="186" width="192" height="3" rx="1.5" fill="#fff" opacity=".22"/>${gloss(p,.15)}${rim(.12)}`; } },
+
+  { name: 'Prism Spectrum', desc: 'Bars centred like a voice waveform, with one smooth rainbow across them.', svg: p => {
+    const hs=[48,96,152,184,136,88,44]; let bars='';
+    hs.forEach((h,i)=>{bars+=`<rect x="${40+i*26}" y="${128-h/2}" width="18" height="${h}" rx="9"/>`});
+    return `<defs>${clip(p)}${lin(p+'r',['#FF3B6B','#FF9F0A','#FFD60A','#30D158','#0A84FF','#B44CFF'],40,0,216,0,'gradientUnits="userSpaceOnUse"')}${glow(p+'w',3)}</defs>
+    ${tile('#0E0E16')}<g fill="url(#${p}r)" filter="url(#${p}w)">${bars}</g>${gloss(p,.2)}${rim(.14)}`; } },
+
+  { name: 'Prism Crystal', desc: 'Chunky 3D crystal bars with a lit face and shaded side, on deep navy.', svg: p => {
+    const hs=[72,124,164,112,64]; let bars='';
+    PRISM5.forEach((c,i)=>{const x=34+i*40,h=hs[i],y=176-h;
+      bars+=`<rect x="${x}" y="${y}" width="30" height="${h}" rx="9" fill="${c}"/>
+      <rect x="${x+20}" y="${y}" width="10" height="${h}" rx="5" fill="#000" opacity=".25"/>
+      <rect x="${x+4}" y="${y+4}" width="8" height="${h-8}" rx="4" fill="#fff" opacity=".5"/>`});
+    return `<defs>${clip(p)}${lin(p+'b',['#1B2440','#0B0E1A'],0,0,1,1)}${shadow(p+'s',8,6,'#000',.5)}</defs>
+    ${tile(`url(#${p}b)`)}<g filter="url(#${p}s)">${bars}</g>${gloss(p,.22)}${rim(.16)}`; } },
+ ]},
+
+ { key: 'G', title: 'Glass Bars', blurb: 'Today\'s icon made glossy. The dot is part of the design, so it doubles as the tray status light, just like now.',
+   items: [
+  { name: 'Glass Bars (original)', desc: 'Three glossy white bars and a marble dot on blue.', ownDot: true, svg: (p, d) => `
+    <defs>${clip(p)}${lin(p+'b',['#3CB4FF','#1E9BFF','#0058D6'],0,0,1,1)}${lin(p+'w',['#FFFFFF','#D2E8FF'])}</defs>
+    ${tile(`url(#${p}b)`)}
+    <rect x="40" y="98" width="36" height="64" rx="18" fill="url(#${p}w)"/><rect x="90" y="50" width="36" height="160" rx="18" fill="url(#${p}w)"/><rect x="140" y="78" width="36" height="104" rx="18" fill="url(#${p}w)"/>
+    ${gdot(p,206,160,20,d)}${gloss(p)}${rim()}` },
+
+  { name: 'Glass Bars Deep', desc: 'Richer blue-to-indigo tile, bars that cast a shadow, bigger marble dot.', ownDot: true, svg: (p, d) => `
+    <defs>${clip(p)}${lin(p+'b',['#38A6FF','#1A4FE0','#3B1FB5'],0,0,1,1)}${lin(p+'w',['#FFFFFF','#DCEBFF'])}${shadow(p+'s',7,6,'#001060',.5)}</defs>
+    ${tile(`url(#${p}b)`)}
+    <g filter="url(#${p}s)">${glassBar(36,96,38,66,`url(#${p}w)`,.0)}${glassBar(88,46,38,164,`url(#${p}w)`,.0)}${glassBar(140,76,38,106,`url(#${p}w)`,.0)}</g>
+    ${gdot(p,208,162,24,d)}${gloss(p,.5)}${rim(.4)}` },
+
+  { name: 'Glass Bars Frosted', desc: 'Frosted see-through bars with bright edges and a soft light from the top left.', ownDot: true, svg: (p, d) => `
+    <defs>${clip(p)}${lin(p+'b',['#55C2FF','#1E7BFF'],0,0,1,1)}
+    <radialGradient id="${p}h" cx=".2" cy=".15" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+    ${tile(`url(#${p}b)`)}<rect ${T} fill="url(#${p}h)"/>
+    <g fill="#fff" fill-opacity=".72" stroke="#fff" stroke-width="3"><rect x="38" y="96" width="36" height="66" rx="18"/><rect x="88" y="48" width="36" height="162" rx="18"/><rect x="138" y="76" width="36" height="106" rx="18"/></g>
+    ${gdot(p,206,160,22,d)}${gloss(p,.35)}${rim(.5)}` },
+
+  { name: 'Glass Bars Night', desc: 'Dark navy tile with glowing cyan glass bars and a glowing dot.', ownDot: true, svg: (p, d) => `
+    <defs>${clip(p)}${lin(p+'b',['#12204A','#060A18'],0,0,1,1)}${lin(p+'w',['#9BEBFF','#1E9BFF'])}${glow(p+'g',5)}</defs>
+    ${tile(`url(#${p}b)`)}
+    <g filter="url(#${p}g)">${glassBar(38,96,36,66,`url(#${p}w)`,.5)}${glassBar(88,48,36,162,`url(#${p}w)`,.5)}${glassBar(138,76,36,106,`url(#${p}w)`,.5)}</g>
+    ${gdot(p,206,160,21,d,true)}${gloss(p,.15)}${rim(.14)}` },
+
+  { name: 'Glass Bars Wave', desc: 'Bars centred on one line like a waveform, with the dot as the next beat.', ownDot: true, svg: (p, d) => `
+    <defs>${clip(p)}${lin(p+'b',['#3CB4FF','#1E9BFF','#0058D6'],0,0,1,1)}${lin(p+'w',['#FFFFFF','#D6EAFF'])}${shadow(p+'s',5,5,'#002A80',.4)}</defs>
+    ${tile(`url(#${p}b)`)}
+    <g filter="url(#${p}s)">${glassBar(32,92,40,72,`url(#${p}w)`,0)}${glassBar(86,44,40,168,`url(#${p}w)`,0)}${glassBar(140,72,40,112,`url(#${p}w)`,0)}</g>
+    ${gdot(p,210,128,22,d)}${gloss(p)}${rim()}` },
+
+  { name: 'Glass Bars Vivid', desc: 'Cyan-blue-violet tile with glowing white bars. The most colourful of the set.', ownDot: true, svg: (p, d) => `
+    <defs>${clip(p)}${lin(p+'b',['#00D4FF','#1E6BFF','#7A3CFF'],0,0,1,1)}${glow(p+'g',4)}</defs>
+    ${tile(`url(#${p}b)`)}
+    <g filter="url(#${p}g)" fill="#fff"><rect x="38" y="96" width="36" height="66" rx="18"/><rect x="88" y="48" width="36" height="162" rx="18"/><rect x="138" y="76" width="36" height="106" rx="18"/></g>
+    ${gdot(p,206,160,22,d)}${gloss(p,.45)}${rim(.45)}` },
+ ]},
+
+ { key: 'F', title: 'Flash Wave', blurb: 'The lightning bolt between sound waves. The iterations try thicker waves, other backgrounds and a mic version.',
+   items: [
+  { name: 'Flash Wave (original)', desc: 'Yellow bolt with two sound waves on each side.', svg: p => `
+    <defs>${clip(p)}${glow(p+'g',7)}${lin(p+'y',['#FFF8A6','#FFD000','#FF8A00'])}${lin(p+'b',['#2A2D38','#101218'])}</defs>
+    ${tile(`url(#${p}b)`)}
+    <path d="M70 96a46 46 0 0 0 0 64M48 76a76 76 0 0 0 0 104M186 96a46 46 0 0 1 0 64M208 76a76 76 0 0 1 0 104" fill="none" stroke="#FFD000" stroke-opacity=".75" stroke-width="10" stroke-linecap="round"/>
+    <path filter="url(#${p}g)" d="${BOLT}" fill="url(#${p}y)" stroke="#FFF8A6" stroke-width="3" stroke-linejoin="round"/>
+    ${gloss(p,.2)}${rim(.15)}` },
+
+  { name: 'Flash Bold', desc: 'A bigger bolt and one thick wave per side. Much clearer when small.', svg: p => `
+    <defs>${clip(p)}${glow(p+'g',8)}${lin(p+'y',['#FFF8A6','#FFD000','#FF8A00'])}${lin(p+'b',['#2A2D38','#0C0E13'])}</defs>
+    ${tile(`url(#${p}b)`)}
+    <path d="M62 84a64 64 0 0 0 0 88M194 84a64 64 0 0 1 0 88" fill="none" stroke="#FFD000" stroke-width="16" stroke-linecap="round"/>
+    <g transform="translate(128 128) scale(1.12) translate(-128 -128)"><path filter="url(#${p}g)" d="${BOLT}" fill="url(#${p}y)" stroke="#FFF8A6" stroke-width="3" stroke-linejoin="round"/></g>
+    ${gloss(p,.2)}${rim(.15)}` },
+
+  { name: 'Flash Electric', desc: 'The bolt on a glossy brand-blue tile with white sound waves.', svg: p => `
+    <defs>${clip(p)}${glow(p+'g',6)}${lin(p+'y',['#FFF8A6','#FFD000','#FF9500'])}${lin(p+'b',['#3CB4FF','#1E9BFF','#0A3FD0'],0,0,1,1)}</defs>
+    ${tile(`url(#${p}b)`)}
+    <path d="M62 84a64 64 0 0 0 0 88M194 84a64 64 0 0 1 0 88" fill="none" stroke="#fff" stroke-width="15" stroke-linecap="round"/>
+    <g transform="translate(128 128) scale(1.1) translate(-128 -128)"><path filter="url(#${p}g)" d="${BOLT}" fill="url(#${p}y)" stroke="#B35F00" stroke-opacity=".5" stroke-width="3" stroke-linejoin="round"/></g>
+    ${gloss(p,.45)}${rim(.4)}` },
+
+  { name: 'Flash Gold', desc: 'Polished metallic gold bolt and waves on black, with a sparkle.', svg: p => `
+    <defs>${clip(p)}${lin(p+'g',['#FFF3B0','#E6B422','#FFF8D6','#B8860B','#FFD966'],0,0,1,1)}${lin(p+'b',['#1E1E1E','#000'])}${shadow(p+'s',0,8,'#FFB800',.5)}</defs>
+    ${tile(`url(#${p}b)`)}
+    <path d="M62 84a64 64 0 0 0 0 88M194 84a64 64 0 0 1 0 88" fill="none" stroke="url(#${p}g)" stroke-width="15" stroke-linecap="round"/>
+    <g transform="translate(128 128) scale(1.1) translate(-128 -128)" filter="url(#${p}s)"><path d="${BOLT}" fill="url(#${p}g)" stroke="#FFF8D6" stroke-width="2" stroke-linejoin="round"/></g>
+    ${spark(196,58,13)}${gloss(p,.18)}${rim(.2,'#E6B422')}` },
+
+  { name: 'Flash Ring', desc: 'The bolt inside a glowing yellow-orange ring.', svg: p => `
+    <defs>${clip(p)}${glow(p+'g',6)}${lin(p+'y',['#FFF8A6','#FFD000','#FF8A00'])}${lin(p+'r',['#FFE14D','#FF7A00'],0,0,1,1)}</defs>
+    ${tile('#121319')}
+    <circle filter="url(#${p}g)" cx="128" cy="128" r="84" fill="none" stroke="url(#${p}r)" stroke-width="14"/>
+    <g transform="translate(128 128) scale(.86) translate(-128 -128)"><path filter="url(#${p}g)" d="${BOLT}" fill="url(#${p}y)" stroke="#FFF8A6" stroke-width="3" stroke-linejoin="round"/></g>
+    ${gloss(p,.15)}${rim(.12)}` },
+
+  { name: 'Flash Mic', desc: 'A white microphone struck through by the yellow bolt, on deep violet.', svg: p => `
+    <defs>${clip(p)}${glow(p+'g',6)}${lin(p+'y',['#FFF8A6','#FFD000','#FF8A00'])}${lin(p+'b',['#3A1580','#120530'],0,0,1,1)}</defs>
+    ${tile(`url(#${p}b)`)}
+    ${mic('#fff','#fff',14,.95,128,130)}
+    <g transform="translate(150 122) scale(.62) translate(-128 -128)"><path filter="url(#${p}g)" d="${BOLT}" fill="url(#${p}y)" stroke="#120530" stroke-width="10" stroke-linejoin="round" paint-order="stroke"/></g>
+    ${gloss(p,.25)}${rim(.2)}` },
+ ]},
+
+ { key: 'H', title: 'Hybrids', blurb: 'Mixing the three favourites.',
+   items: [
+  { name: 'Prism Bars', desc: 'Glass Bars layout with Prism colours, on a dark tile. Own status dot.', ownDot: true, svg: (p, d) => `
+    <defs>${clip(p)}${lin(p+'b',['#1E1E2C','#0B0B12'])}</defs>
+    ${tile(`url(#${p}b)`)}
+    ${glassBar(38,96,36,66,'#FF3B6B')}${glassBar(88,48,36,162,'#FFD60A')}${glassBar(138,76,36,106,'#0A84FF')}
+    ${gdot(p,206,160,22,d,true)}${gloss(p,.2)}${rim(.14)}` },
+
+  { name: 'Glass Bolt', desc: 'Glass Bars where the tall middle bar is a lightning bolt. Own status dot.', ownDot: true, svg: (p, d) => `
+    <defs>${clip(p)}${lin(p+'b',['#3CB4FF','#1E9BFF','#0058D6'],0,0,1,1)}${lin(p+'w',['#FFFFFF','#D2E8FF'])}${lin(p+'y',['#FFF8A6','#FFD000','#FF8A00'])}${glow(p+'g',5)}</defs>
+    ${tile(`url(#${p}b)`)}
+    <rect x="30" y="98" width="34" height="62" rx="17" fill="url(#${p}w)"/>
+    <path filter="url(#${p}g)" d="M120 36L72 136H104L90 220L144 110H112L132 36Z" fill="url(#${p}y)" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="152" y="78" width="34" height="102" rx="17" fill="url(#${p}w)"/>
+    ${gdot(p,212,162,18,d)}${gloss(p)}${rim()}` },
+
+  { name: 'Prism Flash', desc: 'The bolt between rainbow sound waves.', svg: p => `
+    <defs>${clip(p)}${glow(p+'g',7)}${lin(p+'y',['#FFFFFF','#FFE14D','#FFB800'])}${lin(p+'b',['#22222E','#0B0B12'])}</defs>
+    ${tile(`url(#${p}b)`)}
+    <g fill="none" stroke-width="13" stroke-linecap="round">
+     <path d="M70 98a44 44 0 0 0 0 60" stroke="#FF9F0A"/><path d="M48 78a74 74 0 0 0 0 100" stroke="#FF3B6B"/>
+     <path d="M186 98a44 44 0 0 1 0 60" stroke="#30D158"/><path d="M208 78a74 74 0 0 1 0 100" stroke="#0A84FF"/></g>
+    <path filter="url(#${p}g)" d="${BOLT}" fill="url(#${p}y)" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
+    ${gloss(p,.2)}${rim(.14)}` },
+ ]},
+];
+
+const all = {};
+families.forEach(f => f.items.forEach((d, i) => { d.id = f.key + (f.key === 'R' ? i + 1 : i); all[d.id] = d; }));
+
+const overlay = (c) => c ? `<circle cx="206" cy="206" r="34" fill="#000" opacity=".25"/><circle cx="206" cy="206" r="28" fill="${c}" stroke="#fff" stroke-width="8"/>` : '';
+let dot = '';
+let picked = null;
+try { const v = localStorage.getItem('mcv-pick2'); if (v && all[v]) picked = v; } catch (e) {}
+
+const icon = (id, key, size) => {
+  const d = all[id];
+  const body = d.ownDot ? d.svg(`${id}${key}`, dot || ORANGE) : d.svg(`${id}${key}`) + overlay(dot);
+  return `<svg viewBox="0 0 256 256" width="${size}" height="${size}" role="img" aria-label="${d.name}">${body}</svg>`;
+};
+
+function card(d, n) {
+  return `<article class="card${picked === d.id ? ' picked' : ''}">
+    <span class="num"><span>${d.id}</span>${d.ownDot ? '<span class="tag">own dot</span>' : ''}</span>
+    <div class="hero" style="--d:${(n % 5) * .6}s">${icon(d.id, 'h', 190)}</div>
+    <div class="meta"><h3>${d.name}</h3><p>${d.desc}</p></div>
+    <div>
+      <div class="sizes">
+        <div class="strip dark">${icon(d.id,'a',48)}${icon(d.id,'b',32)}${icon(d.id,'c',16)}</div>
+        <div class="strip light">${icon(d.id,'e',48)}${icon(d.id,'f',32)}${icon(d.id,'g',16)}</div>
+      </div>
+      <div class="sizecap"><span>48 · 32 · 16 px</span><span>dark / light</span></div>
+    </div>
+    <button class="choose" id="pick-${d.id}" data-id="${d.id}">${picked === d.id ? 'Picked' : 'Pick this one'}</button>
+  </article>`;
+}
+
+function render() {
+  document.getElementById('sections').innerHTML = families.map(f => `
+    <section><h2>${f.title}</h2><p>${f.blurb}</p>
+    <div class="grid">${f.items.map(card).join('')}</div></section>`).join('');
+  if (picked) {
+    document.getElementById('pickbar').innerHTML = `${icon(picked,'p',32)}<span>Your pick: <b>${picked} ${all[picked].name}</b>. Tell Claude <code>use ${picked}</code> to put it in the app.</span>`;
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const c = e.target.closest('.choose');
+  if (c) { picked = c.dataset.id; try { localStorage.setItem('mcv-pick2', picked); } catch (err) {} render(); return; }
+  const b = e.target.closest('[data-dot]');
+  if (b) { dot = b.dataset.dot; document.querySelectorAll('[data-dot]').forEach(x => x.setAttribute('aria-pressed', x === b)); render(); }
+});
+render();
+</script>
