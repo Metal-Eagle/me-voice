@@ -59,5 +59,16 @@ $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"').Mat
 New-Item -ItemType Directory -Force installer\build | Out-Null
 # The release exe is a GUI app, so PowerShell would not wait for it without -Wait.
 Start-Process .\target\release\me-voice.exe -ArgumentList 'write-icon', 'installer\build\me-voice.ico' -Wait
-& $iscc /Q "/DAppVersion=$version" installer\me-voice.iss
+# Inno Setup stamps the icon into the setup exe right after writing it. Antivirus
+# scanning that fresh 10 MB executable can hold it open just long enough to fail
+# with "EndUpdateResource failed (110)", so give it a few tries.
+$setup = "installer\output\me-voice-setup-$version.exe"
+foreach ($attempt in 1..3) {
+    & $iscc /Q "/DAppVersion=$version" installer\me-voice.iss
+    if ($LASTEXITCODE -eq 0) { break }
+    if ($attempt -eq 3) { exit $LASTEXITCODE }
+    Write-Host "Inno Setup failed (attempt $attempt of 3), retrying..."
+    Remove-Item $setup -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
 exit $LASTEXITCODE
