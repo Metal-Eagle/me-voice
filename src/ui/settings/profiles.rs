@@ -98,14 +98,13 @@ impl SettingsApp {
 
         theme::section_label(ui, "CHANGES FROM DEFAULT");
         group(ui, |ui| {
-            let apps = &self.edit.profiles[index].apps;
-            let t3_profile = self.t3_installed && !apps.is_empty() && apps.iter().all(|a| crate::app::apps::is_t3_code_exe(a));
+            let profile = &self.edit.profiles[index];
+            let offers_t3 = offers_t3_native(self.t3_installed, &profile.apps, profile.overrides.insert_mode);
             let o = &mut self.edit.profiles[index].overrides;
             setting_row(ui, "Language", "", |ui| override_combo(ui, "profile-language", &mut o.language, &languages));
             setting_row(ui, "Model", "", |ui| override_combo(ui, "profile-model", &mut o.model_id, &models));
             let mut insert = vec![(InsertMode::Paste, "Pasting".to_string()), (InsertMode::Type, "Typing".to_string())];
-            // T3 native only for a profile of T3 Code itself, or one that already uses it.
-            if t3_profile || o.insert_mode == Some(InsertMode::T3) {
+            if offers_t3 {
                 insert.push((InsertMode::T3, "T3 native".to_string()));
             }
             setting_row(ui, "Insert text by", "", |ui| override_combo(ui, "profile-insert", &mut o.insert_mode, &insert));
@@ -160,4 +159,37 @@ pub(super) fn override_combo<T: Clone + PartialEq>(ui: &mut egui::Ui, id: &str, 
             ui.selectable_value(value, Some(v.clone()), label.as_str());
         }
     });
+}
+
+
+/// Whether a profile is offered T3 native: T3 Code is installed and the profile is only for
+/// T3 Code, or the profile already uses it (so its choice keeps showing its label).
+fn offers_t3_native(t3_installed: bool, apps: &[String], current: Option<InsertMode>) -> bool {
+    let t3_only = !apps.is_empty() && apps.iter().all(|a| crate::app::apps::is_t3_code_exe(a));
+    current == Some(InsertMode::T3) || (t3_installed && t3_only)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn apps(names: &[&str]) -> Vec<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn t3_native_only_for_a_t3_code_profile() {
+        assert!(offers_t3_native(true, &apps(&["t3 code (beta).exe"]), None));
+        assert!(offers_t3_native(true, &apps(&["t3code.exe"]), None));
+        assert!(!offers_t3_native(true, &apps(&["ms-teams.exe"]), None));
+        assert!(!offers_t3_native(true, &apps(&["t3code.exe", "ms-teams.exe"]), None));
+        assert!(!offers_t3_native(true, &apps(&[]), None));
+        assert!(!offers_t3_native(false, &apps(&["t3code.exe"]), None));
+    }
+
+    #[test]
+    fn t3_native_keeps_its_label_once_chosen() {
+        assert!(offers_t3_native(false, &apps(&["t3code.exe"]), Some(InsertMode::T3)));
+        assert!(offers_t3_native(true, &apps(&["t3code.exe", "ms-teams.exe"]), Some(InsertMode::T3)));
+    }
 }

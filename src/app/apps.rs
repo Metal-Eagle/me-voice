@@ -1,9 +1,10 @@
 //! T3 Code: whether it's installed, and sending dictation to it through its CLI.
 
-/// Whether a program name is T3 Code, e.g. `t3 code (beta).exe` (not its uninstaller).
+/// Whether a program name is T3 Code: `t3 code (beta).exe`, `t3 code.exe` or `t3code.exe`,
+/// in any case. Not its uninstaller, and not other programs that merely start with "t3code".
 pub fn is_t3_code_exe(name: &str) -> bool {
-    let name = name.to_lowercase();
-    name.starts_with("t3 code") && name.ends_with(".exe")
+    let name = name.to_lowercase().replace(' ', "");
+    name.strip_prefix("t3code").is_some_and(|rest| rest.ends_with(".exe") && (rest.starts_with('.') || rest.starts_with('(')))
 }
 
 /// Whether T3 Code is installed: its beta build lives in `%LOCALAPPDATA%\Programs\t3code`.
@@ -177,7 +178,11 @@ mod tests {
         assert!(is_t3_code_exe("t3 code (beta).exe"));
         assert!(is_t3_code_exe("T3 Code (Beta).exe"));
         assert!(is_t3_code_exe("t3 code.exe"));
+        assert!(is_t3_code_exe("t3code.exe"));
+        assert!(is_t3_code_exe("T3Code.EXE"));
         assert!(!is_t3_code_exe("uninstall t3 code (beta).exe"));
+        assert!(!is_t3_code_exe("t3codex.exe"));
+        assert!(!is_t3_code_exe("t3code-server.exe"));
         assert!(!is_t3_code_exe("ms-teams.exe"));
         assert!(!is_t3_code_exe("t3 code (beta)"));
     }
