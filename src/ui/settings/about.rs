@@ -94,7 +94,7 @@ fn folder_rows(ui: &mut egui::Ui) {
             open_path(&models_dir());
         }
     });
-    setting_row(ui, "Settings files", "settings.json, dictionary.json, snippets.json and commands.json.", |ui| {
+    setting_row(ui, "Settings files", "settings.json, dictionary.json (words, replacements, snippets) and commands.json.", |ui| {
         if ui.button("Open folder").clicked() {
             let _ = std::fs::create_dir_all(config_dir());
             open_path(&config_dir());

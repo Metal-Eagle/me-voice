@@ -8,15 +8,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::settings::{config_dir, Settings};
 
-/// `dictionary.json`: words to spell exactly like this, plus free-form replacements.
+/// `dictionary.json`: words to spell exactly like this, free-form replacements and snippets.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Dictionary {
     pub words: Vec<String>,
     pub replacements: BTreeMap<String, String>,
+    pub snippets: Snippets,
 }
 
-/// `snippets.json`: spoken trigger phrase -> text to insert.
+/// Spoken trigger phrase -> text to insert (the `snippets` key of `dictionary.json`).
 pub type Snippets = BTreeMap<String, String>;
 
 /// `commands.json`: spoken phrase -> text to insert wherever the phrase is said.
@@ -37,7 +38,19 @@ fn load_json<T: Default + for<'de> Deserialize<'de> + Serialize>(name: &str) -> 
 }
 
 pub fn load_dictionary() -> Dictionary {
-    load_json("dictionary.json")
+    let mut dict: Dictionary = load_json("dictionary.json");
+    // Snippets used to live in their own file: fold it in once, keeping a backup.
+    let legacy = config_dir().join("snippets.json");
+    if let Ok(s) = fs::read_to_string(&legacy) {
+        let old: Snippets = serde_json::from_str(&s).unwrap_or_default();
+        for (k, v) in old {
+            dict.snippets.entry(k).or_insert(v);
+        }
+        if save_dictionary(&dict).is_ok() {
+            let _ = fs::rename(&legacy, config_dir().join("snippets.json.bak"));
+        }
+    }
+    dict
 }
 
 /// Writes dictionary.json (used by the fix window and the settings page).
@@ -48,7 +61,7 @@ pub fn save_dictionary(dict: &Dictionary) -> anyhow::Result<()> {
 }
 
 pub fn load_snippets() -> Snippets {
-    load_json("snippets.json")
+    load_dictionary().snippets
 }
 
 pub fn load_commands() -> Commands {
@@ -449,7 +462,7 @@ mod tests {
 
     #[test]
     fn dictionary_fixes_spelling() {
-        let dict = Dictionary { words: vec!["Kubernetes".into()], replacements: BTreeMap::new() };
+        let dict = Dictionary { words: vec!["Kubernetes".into()], ..Default::default() };
         let out = clean("open kubernetes please", &settings(), &dict, &Snippets::new(), &Commands::new());
         assert_eq!(out, "Open Kubernetes please");
     }

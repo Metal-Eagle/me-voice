@@ -9,21 +9,30 @@ impl SettingsApp {
         theme::section_label(ui, "SNIPPETS");
         group(ui, |ui| {
             ui.add_space(10.0);
-            ui.add(egui::Label::new(egui::RichText::new("Say the phrase on the left, get the text on the right. Saying only the phrase inserts just the snippet.").weak().size(13.0)).wrap());
+            ui.add(egui::Label::new(egui::RichText::new("Say only the phrase and the whole dictation becomes the text. Saved in dictionary.json.").weak().size(13.0)).wrap());
             ui.add_space(6.0);
             let mut remove = None;
+            let width = ui.available_width();
+            let say_w = (width * 0.28).max(120.0);
+            let text_w = (width - say_w - 60.0).max(140.0);
             egui::Grid::new("snippets").num_columns(3).spacing([8.0, 8.0]).show(ui, |ui| {
-                let phrase_w = (ui.available_width() * 0.32).max(120.0);
-                let text_w = (ui.available_width() - phrase_w - 90.0).max(160.0);
+                for head in ["SAY", "INSERTS", ""] {
+                    ui.label(egui::RichText::new(head).weak().size(11.0));
+                }
+                ui.end_row();
                 for (i, (phrase, text)) in self.snippets.iter_mut().enumerate() {
-                    crate::ui::text_menu::add(ui, egui::TextEdit::singleline(phrase).hint_text("my sign off").desired_width(phrase_w).margin(egui::vec2(8.0, 6.0)));
-                    crate::ui::text_menu::add(ui, egui::TextEdit::multiline(text).hint_text("Kind regards, Alex").desired_rows(1).desired_width(text_w).margin(egui::vec2(8.0, 6.0)));
-                    if ui.button("Remove").clicked() {
+                    crate::ui::text_menu::add(ui, egui::TextEdit::singleline(phrase).hint_text("my sign off").desired_width(say_w).margin(egui::vec2(8.0, 6.0)));
+                    crate::ui::text_menu::add(ui, egui::TextEdit::multiline(text).hint_text("Kind regards,
+Alex").desired_rows(1).desired_width(text_w).margin(egui::vec2(8.0, 6.0)));
+                    if ui.button("✕").on_hover_text("Remove").clicked() {
                         remove = Some(i);
                     }
                     ui.end_row();
                 }
             });
+            if self.snippets.is_empty() {
+                ui.weak("No snippets yet.");
+            }
             if let Some(i) = remove {
                 self.snippets.remove(i);
             }
@@ -42,7 +51,7 @@ impl SettingsApp {
 Anna
 Zoe").desired_rows(4).desired_width(f32::INFINITY).margin(egui::vec2(8.0, 6.0)));
             ui.horizontal(|ui| {
-                ui.weak("Replacements (for example \"cuber netties\" becomes \"Kubernetes\") go in");
+                ui.weak("Replacements (for example \"cuber netties\" becomes \"Kubernetes\") and snippets live in");
                 if ui.link("dictionary.json").clicked() {
                     crate::text::cleanup::load_dictionary();
                     open_path(&config_dir().join("dictionary.json"));

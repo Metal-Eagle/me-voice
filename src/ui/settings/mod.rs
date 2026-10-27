@@ -438,7 +438,7 @@ impl SettingsApp {
         let _ = ipc::send(Command::Reload);
     }
 
-    /// Writes snippets.json and the word list in dictionary.json (keeping its replacements).
+    /// Writes the words and snippets in dictionary.json (keeping its replacements).
     fn save_words(&mut self) -> Result<()> {
         let snippets: crate::text::cleanup::Snippets = self
             .snippets
@@ -446,12 +446,10 @@ impl SettingsApp {
             .filter(|(p, t)| !p.trim().is_empty() && !t.is_empty())
             .map(|(p, t)| (p.trim().to_string(), t.clone()))
             .collect();
-        std::fs::create_dir_all(config_dir())?;
-        std::fs::write(config_dir().join("snippets.json"), serde_json::to_string_pretty(&snippets)?)?;
-
         let mut dict = crate::text::cleanup::load_dictionary();
         dict.words = self.dictionary.lines().map(str::trim).filter(|w| !w.is_empty()).map(String::from).collect();
-        std::fs::write(config_dir().join("dictionary.json"), serde_json::to_string_pretty(&dict)?)?;
+        dict.snippets = snippets;
+        crate::text::cleanup::save_dictionary(&dict)?;
 
         let commands: crate::text::cleanup::Commands = self
             .commands
