@@ -1,15 +1,18 @@
 //! T3 Code: whether it's installed, and sending dictation to it through its CLI.
 
+/// Whether a program name is T3 Code, e.g. `t3 code (beta).exe` (not its uninstaller).
+pub fn is_t3_code_exe(name: &str) -> bool {
+    let name = name.to_lowercase();
+    name.starts_with("t3 code") && name.ends_with(".exe")
+}
+
 /// Whether T3 Code is installed: its beta build lives in `%LOCALAPPDATA%\Programs\t3code`.
 #[cfg(windows)]
 pub fn t3_code_installed() -> bool {
     let Some(local) = std::env::var_os("LOCALAPPDATA") else { return false };
     let dir = std::path::PathBuf::from(local).join("Programs").join("t3code");
     let Ok(entries) = std::fs::read_dir(dir) else { return false };
-    entries.flatten().any(|entry| {
-        let name = entry.file_name().to_string_lossy().to_lowercase();
-        name.starts_with("t3 code") && name.ends_with(".exe") && !name.starts_with("uninstall")
-    })
+    entries.flatten().any(|entry| is_t3_code_exe(&entry.file_name().to_string_lossy()))
 }
 
 #[cfg(not(windows))]
@@ -128,6 +131,16 @@ pub fn t3_send(_text: &str) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn t3_code_exe_matches_t3_only() {
+        assert!(is_t3_code_exe("t3 code (beta).exe"));
+        assert!(is_t3_code_exe("T3 Code (Beta).exe"));
+        assert!(is_t3_code_exe("t3 code.exe"));
+        assert!(!is_t3_code_exe("uninstall t3 code (beta).exe"));
+        assert!(!is_t3_code_exe("ms-teams.exe"));
+        assert!(!is_t3_code_exe("t3 code (beta)"));
+    }
 
     #[test]
     fn thread_id_accepts_uuid_and_rejects_shell_text() {

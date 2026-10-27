@@ -25,7 +25,7 @@ use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
 use tray_icon::menu::MenuEvent;
 
-use crate::settings::{AiProvider, ContextLevel, HotkeyMode, Settings, ShortcutAction};
+use crate::settings::{AiProvider, ContextLevel, HotkeyMode, InsertMode, Settings, ShortcutAction};
 use crate::speech::audio::{self, Recording};
 use crate::speech::models;
 use crate::speech::sound::{self, Beep};
@@ -472,6 +472,10 @@ impl App {
         self.target_app = crate::text::foreground::app_name();
         let forced = self.forced_profile.take();
         self.active = profiles::effective(&self.settings, self.target_app.as_deref(), forced.as_deref());
+        // T3 native only sends from T3 Code itself; a forced or mixed profile types elsewhere.
+        if self.active.insert_mode == InsertMode::T3 && !self.target_app.as_deref().is_some_and(apps::is_t3_code_exe) {
+            self.active.insert_mode = InsertMode::Type;
+        }
         self.active_profile = profiles::matching(&self.settings, self.target_app.as_deref(), forced.as_deref()).map(|p| p.name.clone());
         let model_ready = models::find(&self.active.model_id).is_some_and(|m| m.is_downloaded());
         if !model_ready {
