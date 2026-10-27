@@ -7,6 +7,7 @@ mod behaviour;
 mod profiles;
 mod shortcuts;
 mod speech;
+mod t3;
 mod words;
 
 use about::*;
@@ -32,6 +33,7 @@ enum Page {
     Words,
     Profiles,
     Ai,
+    T3Code,
     About,
 }
 
@@ -86,6 +88,8 @@ struct SettingsApp {
     ai_test: Arc<Mutex<Option<String>>>,
     /// The About page's update check, filled in by a background thread.
     update: Arc<Mutex<UpdateState>>,
+    /// Whether T3 Code is installed, which adds its page to the sidebar.
+    t3_installed: bool,
 }
 
 /// Where a voice command works, shown as a coloured tag on the Words page.
@@ -153,6 +157,7 @@ pub fn run() -> Result<()> {
         Ok("words") => Page::Words,
         Ok("profiles") => Page::Profiles,
         Ok("ai") => Page::Ai,
+        Ok("t3") => Page::T3Code,
         Ok("about") => Page::About,
         Ok("shortcut") => Page::Shortcut,
         Ok("history") => Page::History,
@@ -186,6 +191,7 @@ pub fn run() -> Result<()> {
         frames: 0,
         ai_test: Arc::new(Mutex::new(None)),
         update: Arc::new(Mutex::new(UpdateState::NotChecked)),
+        t3_installed: crate::app::apps::t3_code_installed(),
     };
     let result = eframe::run_native(
         "me-voice settings",
@@ -260,8 +266,12 @@ impl eframe::App for SettingsApp {
                 (Page::Words, Icon::Text, "Words"),
                 (Page::Profiles, Icon::Layers, "Profiles"),
                 (Page::Ai, Icon::Sparkle, "AI"),
+                (Page::T3Code, Icon::Keyboard, "T3 Code"),
                 (Page::About, Icon::Info, "About"),
             ] {
+                if page == Page::T3Code && !self.t3_installed {
+                    continue;
+                }
                 if theme::nav_item(ui, icon, label, self.page == page) {
                     if page == Page::History || page == Page::Dashboard {
                         self.history.entries = crate::text::history::load();
@@ -318,6 +328,7 @@ impl eframe::App for SettingsApp {
                             Page::Words => self.words_page(ui),
                             Page::Profiles => self.profiles_page(ui),
                             Page::Ai => self.ai_page(ui),
+                            Page::T3Code => self.t3_page(ui),
                             Page::About => self.about_page(ui),
                         }
                     });

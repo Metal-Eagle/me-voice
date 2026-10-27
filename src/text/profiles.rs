@@ -102,6 +102,18 @@ mod tests {
     }
 
     #[test]
+    fn t3_code_type_profile_matches_ignoring_case() {
+        let t3 = Profile {
+            name: "T3 Code".into(),
+            apps: vec!["t3 code (beta).exe".into()],
+            overrides: ProfileOverrides { insert_mode: Some(InsertMode::Type), ..Default::default() },
+        };
+        let s = Settings { profiles: vec![t3], ..Default::default() };
+        assert_eq!(matching(&s, Some("T3 Code (Beta).exe"), None).map(|p| p.name.as_str()), Some("T3 Code"));
+        assert_eq!(effective(&s, Some("T3 CODE (BETA).EXE"), None).insert_mode, InsertMode::Type);
+    }
+
+    #[test]
     fn matching_ignores_case() {
         let s = settings();
         assert_eq!(matching(&s, Some("MS-Teams.EXE"), None).map(|p| p.name.as_str()), Some("Chat"));

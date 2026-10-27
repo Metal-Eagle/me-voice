@@ -4,6 +4,7 @@
 //! (`ControlFlow::Wait`), the microphone is closed and, after the idle
 //! timeout, the model is unloaded from memory.
 
+pub mod apps;
 pub mod instance;
 pub mod ipc;
 pub mod log;
