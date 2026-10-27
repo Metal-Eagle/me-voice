@@ -130,6 +130,8 @@ struct App {
     countdown: Option<f32>,
     /// The current dictation is a Command Mode instruction for the selected text.
     command_mode: bool,
+    /// The current dictation goes to T3 Code, whatever program is in front.
+    force_t3: bool,
     /// Screen context read when the dictation started, arriving from a background thread.
     context: Option<std::sync::mpsc::Receiver<Context>>,
     /// The AI provider, started with the dictation so it is ready when the text is.
@@ -325,6 +327,7 @@ impl App {
             last_text: String::new(),
             countdown: None,
             command_mode: false,
+            force_t3: false,
             context: None,
             polishing: false,
             warm: None,
@@ -413,6 +416,7 @@ impl App {
         // Profile for an extra dictation shortcut; `None` for the main shortcut.
         let mut profile = None;
         let mut command = false;
+        let mut to_t3 = false;
         if !is_main {
             let action = match self.extra.get(&e.id) {
                 Some((_, action)) => action.clone(),
@@ -420,13 +424,14 @@ impl App {
             };
             match action {
                 ShortcutAction::Dictate { profile: name } => profile = Some(name),
+                ShortcutAction::DictateToT3 => to_t3 = true,
                 ShortcutAction::PasteLast if e.state == HotKeyState::Pressed => self.paste_last(),
                 ShortcutAction::FixLast if e.state == HotKeyState::Pressed => self.fix_last(),
                 ShortcutAction::Paragraph if e.state == HotKeyState::Pressed => crate::ui::paragraph_window::open_or_new_line(),
                 ShortcutAction::Command => command = true,
                 _ => {}
             }
-            if profile.is_none() && !command {
+            if profile.is_none() && !command && !to_t3 {
                 return;
             }
         }
@@ -446,6 +451,7 @@ impl App {
                 self.forced_profile = profile.filter(|p| !p.trim().is_empty());
                 self.started_by = Some(e.id);
                 self.command_mode = command;
+                self.force_t3 = to_t3;
                 self.start_recording(self.settings.hotkey_mode == HotkeyMode::TapOnly);
             }
             Step::Stop => self.stop_recording(),
@@ -465,6 +471,7 @@ impl App {
                 State::Idle => {
                     self.forced_profile = None;
                     self.command_mode = false;
+                    self.force_t3 = false;
                     self.start_recording(true);
                 }
                 State::Recording { .. } => self.stop_recording(),
@@ -498,8 +505,11 @@ impl App {
         self.target_app = crate::text::foreground::app_name();
         let forced = self.forced_profile.take();
         self.active = profiles::effective(&self.settings, self.target_app.as_deref(), forced.as_deref());
-        // T3 native only sends from T3 Code itself; a forced or mixed profile types elsewhere.
-        if self.active.insert_mode == InsertMode::T3 && !self.target_app.as_deref().is_some_and(apps::is_t3_code_exe) {
+        if self.force_t3 {
+            // This shortcut is for T3 Code: the CLI sends the text there from any program.
+            self.active.insert_mode = InsertMode::T3;
+        } else if self.active.insert_mode == InsertMode::T3 && !self.target_app.as_deref().is_some_and(apps::is_t3_code_exe) {
+            // T3 native only sends from T3 Code itself; a forced or mixed profile types elsewhere.
             self.active.insert_mode = InsertMode::Type;
         }
         self.active_profile = profiles::matching(&self.settings, self.target_app.as_deref(), forced.as_deref()).map(|p| p.name.clone());

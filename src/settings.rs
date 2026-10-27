@@ -59,6 +59,8 @@ pub enum ContextLevel {
 pub enum ShortcutAction {
     /// Dictate using the named profile, like the dictation shortcut.
     Dictate { profile: String },
+    /// Dictate and send the text to T3 Code, whatever program is in front.
+    DictateToT3,
     PasteLast,
     FixLast,
     /// Opens the paragraph window; pressed again it locks in the line and starts the next.
@@ -331,5 +333,12 @@ mod tests {
     fn insert_mode_t3_round_trips_as_t3() {
         assert_eq!(serde_json::to_string(&InsertMode::T3).unwrap(), "\"t3\"");
         assert_eq!(serde_json::from_str::<InsertMode>("\"t3\"").unwrap(), InsertMode::T3);
+    }
+
+    #[test]
+    fn dictate_to_t3_action_round_trips() {
+        let json = serde_json::to_string(&ShortcutAction::DictateToT3).unwrap();
+        assert_eq!(json, "{\"type\":\"dictateToT3\"}");
+        assert_eq!(serde_json::from_str::<ShortcutAction>(&json).unwrap(), ShortcutAction::DictateToT3);
     }
 }

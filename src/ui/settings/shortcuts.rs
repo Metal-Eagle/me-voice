@@ -42,7 +42,7 @@ impl SettingsApp {
         let mut remove = None;
         group(ui, |ui| {
             if self.edit.extra_shortcuts.is_empty() {
-                ui.weak("Add a shortcut to dictate with a profile, or to paste or fix your last dictation.");
+                ui.weak("Add a shortcut to dictate with a profile, to send a dictation to T3 Code, or to paste or fix your last dictation.");
                 ui.add_space(8.0);
             }
             for i in 0..self.edit.extra_shortcuts.len() {
@@ -60,6 +60,9 @@ impl SettingsApp {
                             };
                             if ui.selectable_label(matches!(extra.action, ShortcutAction::Dictate { .. }), "Dictate with profile").clicked() {
                                 extra.action = ShortcutAction::Dictate { profile };
+                            }
+                            if ui.selectable_label(extra.action == ShortcutAction::DictateToT3, "Dictate to T3 Code").clicked() {
+                                extra.action = ShortcutAction::DictateToT3;
                             }
                             if ui.selectable_label(extra.action == ShortcutAction::PasteLast, "Paste last dictation").clicked() {
                                 extra.action = ShortcutAction::PasteLast;
@@ -202,6 +205,7 @@ pub(super) fn mode_description(mode: HotkeyMode) -> &'static str {
 pub(super) fn action_label(action: &ShortcutAction) -> &'static str {
     match action {
         ShortcutAction::Dictate { .. } => "Dictate with profile",
+        ShortcutAction::DictateToT3 => "Dictate to T3 Code",
         ShortcutAction::PasteLast => "Paste last dictation",
         ShortcutAction::FixLast => "Fix last dictation",
         ShortcutAction::Paragraph => "Dictate paragraph",

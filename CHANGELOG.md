@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0 - 2026-10-27
+
+- New: **Dictate to T3 Code**, a new action for an extra shortcut under Settings → Shortcut → More shortcuts. Give it its own key (F6, say) and keep F5 for normal dictation: what you say on that key goes straight to the T3 Code thread you opened last, from whatever program you are in. "New chat" still starts a new chat in the same project, and if T3 Code can't take it the text is typed instead.
+
 ## 1.3.1 - 2026-10-27
 
 - Fixed: macOS can start again after a normal quit or a crash. Stale IPC sockets are recovered without replacing a live listener, and Unix instances use sockets scoped to their data folder.
