@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 pub enum InsertMode {
     Paste,
     Type,
+    /// Sends the text to the T3 Code thread opened last, as its next message.
+    T3,
 }
 
 /// How the dictation shortcut starts and stops listening.
@@ -318,5 +320,16 @@ impl Settings {
         fs::create_dir_all(path.parent().unwrap())?;
         let json = serde_json::to_string_pretty(self)?;
         fs::write(&path, json).with_context(|| format!("writing {}", path.display()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_mode_t3_round_trips_as_t3() {
+        assert_eq!(serde_json::to_string(&InsertMode::T3).unwrap(), "\"t3\"");
+        assert_eq!(serde_json::from_str::<InsertMode>("\"t3\"").unwrap(), InsertMode::T3);
     }
 }

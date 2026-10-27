@@ -11,6 +11,7 @@ impl SettingsApp {
                     .selected_text(match self.edit.insert_mode {
                         InsertMode::Paste => "Pasting",
                         InsertMode::Type => "Typing",
+                        InsertMode::T3 => "T3 native",
                     })
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.edit.insert_mode, InsertMode::Paste, "Pasting");

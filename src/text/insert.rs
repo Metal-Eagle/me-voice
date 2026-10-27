@@ -27,9 +27,16 @@ pub fn insert(text: &str, mode: InsertMode, press_enter: bool) -> Result<()> {
         match mode {
             InsertMode::Type => type_text(&mut enigo, text)?,
             InsertMode::Paste => paste(&mut enigo, text, press_enter)?,
+            InsertMode::T3 => {
+                // The T3 CLI submits the message itself, so Enter is never pressed for it below.
+                if let Err(e) = crate::app::apps::t3_send(text) {
+                    crate::app::log::write(&format!("T3 native insert: {e}"));
+                    type_text(&mut enigo, text)?;
+                }
+            }
         }
     }
-    if press_enter && (mode == InsertMode::Type || text.is_empty()) {
+    if press_enter && (mode == InsertMode::Type || text.is_empty()) && mode != InsertMode::T3 {
         sleep(Duration::from_millis(60));
         enigo.key(Key::Return, Click).map_err(|e| anyhow!("enter: {e}"))?;
     }

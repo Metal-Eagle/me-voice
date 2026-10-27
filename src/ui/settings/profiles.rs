@@ -65,7 +65,7 @@ impl SettingsApp {
             ui.horizontal_wrapped(|ui| {
                 for (i, app) in apps.iter().enumerate() {
                     ui.label(app.as_str());
-                    if ui.small_button("✕").clicked() {
+                    if ui.small_button("×").on_hover_text("Remove").clicked() {
                         remove = Some(i);
                     }
                     ui.add_space(8.0);
@@ -98,10 +98,15 @@ impl SettingsApp {
 
         theme::section_label(ui, "CHANGES FROM DEFAULT");
         group(ui, |ui| {
+            let t3_installed = self.t3_installed;
             let o = &mut self.edit.profiles[index].overrides;
             setting_row(ui, "Language", "", |ui| override_combo(ui, "profile-language", &mut o.language, &languages));
             setting_row(ui, "Model", "", |ui| override_combo(ui, "profile-model", &mut o.model_id, &models));
-            let insert = [(InsertMode::Paste, "Pasting".to_string()), (InsertMode::Type, "Typing".to_string())];
+            let mut insert = vec![(InsertMode::Paste, "Pasting".to_string()), (InsertMode::Type, "Typing".to_string())];
+            // T3 native shows only with T3 Code installed, or when this profile already uses it.
+            if t3_installed || o.insert_mode == Some(InsertMode::T3) {
+                insert.push((InsertMode::T3, "T3 native".to_string()));
+            }
             setting_row(ui, "Insert text by", "", |ui| override_combo(ui, "profile-insert", &mut o.insert_mode, &insert));
             let on_off = |on: &str, off: &str| [(true, on.to_string()), (false, off.to_string())];
             setting_row(ui, "Press Enter after pasting", "", |ui| {
