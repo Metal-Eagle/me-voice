@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 - 2026-10-27
+
+- New: a **T3 Code** page in Settings, shown only when T3 Code is installed on this computer. Switch on **Type into T3 Code** and dictation is typed straight into its prompt instead of going through the clipboard, so what you had copied stays on it.
+- Internal: a build warning about an unused import is gone.
+
 ## 1.1.0 - 2026-10-27
 
 - Snippets now live in dictionary.json next to words and replacements. An existing snippets.json is merged in automatically (kept as snippets.json.bak).
