@@ -25,13 +25,33 @@ pub fn insert(text: &str, mode: InsertMode, press_enter: bool) -> Result<()> {
     let mut enigo = Enigo::new(&EnigoSettings::default()).map_err(|e| anyhow!("keyboard: {e}"))?;
     if !text.is_empty() {
         match mode {
-            InsertMode::Type => enigo.text(text).map_err(|e| anyhow!("typing: {e}"))?,
+            InsertMode::Type => type_text(&mut enigo, text)?,
             InsertMode::Paste => paste(&mut enigo, text, press_enter)?,
         }
     }
     if press_enter && (mode == InsertMode::Type || text.is_empty()) {
         sleep(Duration::from_millis(60));
         enigo.key(Key::Return, Click).map_err(|e| anyhow!("enter: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Types the text. Line breaks go in as Shift+Enter: a plain Enter sends the message in chat
+/// apps and prompt boxes, and editors take Shift+Enter as a line break too.
+fn type_text(enigo: &mut Enigo, text: &str) -> Result<()> {
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            let line_break = (|| {
+                enigo.key(Key::Shift, Press)?;
+                enigo.key(Key::Return, Click)?;
+                enigo.key(Key::Shift, Release)
+            })();
+            line_break.map_err(|e| anyhow!("line break: {e}"))?;
+        }
+        let line = line.trim_end_matches('\r');
+        if !line.is_empty() {
+            enigo.text(line).map_err(|e| anyhow!("typing: {e}"))?;
+        }
     }
     Ok(())
 }
