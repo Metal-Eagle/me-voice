@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0 - 2026-10-27
+
+- Snippets now live in dictionary.json next to words and replacements. An existing snippets.json is merged in automatically (kept as snippets.json.bak).
+- The snippet table on Settings → Words matches the voice-commands table.
+
 ## 1.0.0 - 2026-10-26
 
 - First public release, licensed under MIT.
