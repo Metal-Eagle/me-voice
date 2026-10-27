@@ -3,6 +3,8 @@
 ## 1.2.0 - 2026-10-27
 
 - New: a **T3 Code** page in Settings, shown only when T3 Code is installed on this computer. Switch on **Type into T3 Code** and dictation is typed straight into its prompt instead of going through the clipboard, so what you had copied stays on it.
+- When text is typed out instead of pasted, line breaks go in as Shift+Enter. Saying "new line" no longer sends a chat message or a prompt halfway through.
+- Fixed: on Settings → Words the snippet boxes were squashed to the width of their headings and the remove button showed an empty box. The voice-command table no longer makes the page wider than the window, which cut off the stop and send word boxes.
 - Internal: a build warning about an unused import is gone.
 
 ## 1.1.0 - 2026-10-27
