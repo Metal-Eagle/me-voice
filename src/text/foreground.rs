@@ -34,7 +34,13 @@ pub fn app_name() -> Option<String> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub fn app_name() -> Option<String> {
+    let app = objc2_app_kit::NSWorkspace::sharedWorkspace().frontmostApplication()?;
+    app.executableURL()?.lastPathComponent().map(|name| name.to_string().to_lowercase())
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn app_name() -> Option<String> {
     None
 }

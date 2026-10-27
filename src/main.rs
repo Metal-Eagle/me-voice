@@ -14,6 +14,14 @@ use ui::{fix_window, icon, paragraph_window, settings as settings_ui};
 use anyhow::{anyhow, Result};
 
 fn main() -> Result<()> {
+    let result = run();
+    if let Err(e) = &result {
+        log::write(&format!("startup/command failed: {e:#}"));
+    }
+    result
+}
+
+fn run() -> Result<()> {
     // `--dev` (development instance) can appear anywhere; see settings::is_dev.
     let args: Vec<String> = std::env::args().skip(1).filter(|a| a != "--dev").collect();
     power::disable_throttling();

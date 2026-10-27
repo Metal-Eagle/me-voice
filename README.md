@@ -67,7 +67,7 @@ A menu on the left with these pages:
 - **Words**: add, edit and remove snippets right in the window; dictionary words (one per line); filler-word removal; spoken formatting.
 - **About**: version, plus buttons to open the models and settings folders.
 
-The window can be resized; on narrow widths each setting's control moves under its description. Click **Save** (or press **Ctrl+S**) to apply. The running app picks up changes immediately.
+The window can be resized; on narrow widths each setting's control moves under its description. Click **Save** (or press **Ctrl+S**) to apply. A dictation already in progress keeps its profile and settings until it finishes; updated shortcuts are registered once it is idle.
 
 ### Words: dictionary, snippets and clean-up
 
@@ -223,7 +223,7 @@ me-voice live-test file.wav    play a 16 kHz WAV through the live preview and vo
 
 ### macOS and Linux
 
-The code is cross-platform, but so far it's only tested on Windows. The macOS build script has not been run on a Mac yet.
+Windows is the primary locally tested platform. macOS CI builds and smoke-tests the Apple silicon app; microphone permissions and real dictation still need testing on a Mac. Linux has not been tested end-to-end.
 
 - **macOS**: install Xcode command-line tools, Rust, CMake and LLVM (`brew install cmake llvm`; optionally `librsvg` for the app icon), then run [`build-macos.sh`](scripts/build-macos.sh) on a Mac:
   ```bash
@@ -232,6 +232,10 @@ The code is cross-platform, but so far it's only tested on Windows. The macOS bu
   ./scripts/build-macos.sh --test       # unit tests
   ```
   Apple silicon only: Intel Macs aren't supported, because the ONNX Runtime crate has no prebuilt binary for them. The app is a menu-bar app (no Dock icon) with an ad-hoc signature, not a Developer ID one, so on first open use right-click → **Open**. Allow **Microphone** and **Accessibility** access when asked. The bundle metadata is in [`packaging/macos/Info.plist`](packaging/macos/Info.plist).
+  - Move the app to **Applications** before enabling **Start at login**. This creates a per-user LaunchAgent in `~/Library/LaunchAgents`; it takes effect at the next sign-in. Disabling it removes the agent without stopping the current app.
+  - Profile app names are executable names such as `Safari` or `Google Chrome`, not Windows `.exe` names. App detection also enables per-app dashboard statistics.
+  - Settings, models and the log are under `~/Library/Application Support/me-voice`. Startup failures are written to `me-voice.log` there. Reopening after a quit or crash recovers stale IPC sockets automatically.
+  - The macOS CI build also runs `bash scripts/smoke-macos.sh` to check packaged startup, normal quit and restart after a forced exit. Microphone permissions and real dictation still need testing on a Mac.
 - **Linux**: install CMake, clang/libclang, and the ALSA, GTK and xdotool development packages.
   - X11 works.
   - On **Wayland**, global shortcuts are blocked. Bind a shortcut in your desktop settings to `me-voice toggle` instead.

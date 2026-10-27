@@ -433,12 +433,21 @@ impl SettingsApp {
                 return;
             }
         }
+        let login_changed = self.edit.start_at_login != self.saved.start_at_login;
+        if login_changed {
+            if let Err(e) = crate::app::login::set_enabled(self.edit.start_at_login) {
+                self.shortcut_error = Some(format!("Could not change start at login: {e:#}"));
+                return;
+            }
+        }
         if let Err(e) = self.edit.save() {
+            if login_changed {
+                if let Err(rollback) = crate::app::login::set_enabled(self.saved.start_at_login) {
+                    crate::app::log::write(&format!("could not restore start at login after save failed: {rollback:#}"));
+                }
+            }
             self.shortcut_error = Some(format!("Could not save: {e}"));
             return;
-        }
-        if self.edit.start_at_login != self.saved.start_at_login {
-            set_start_at_login(self.edit.start_at_login);
         }
         self.saved = self.edit.clone();
         let _ = ipc::send(Command::Reload);
@@ -532,29 +541,16 @@ pub fn replace_old_login_entry() -> bool {
     {
         let reg = |args: &[&str]| std::process::Command::new("reg").args(args).output().is_ok_and(|o| o.status.success());
         if reg(&["query", RUN_KEY, "/v", "mc-voice"]) {
-            reg(&["delete", RUN_KEY, "/v", "mc-voice", "/f"]);
-            set_start_at_login(true);
+            if let Err(e) = crate::app::login::set_enabled(true) {
+                crate::app::log::write(&format!("could not migrate start at login: {e:#}"));
+                return false;
+            }
+            if !reg(&["delete", RUN_KEY, "/v", "mc-voice", "/f"]) {
+                crate::app::log::write("could not remove the old mc-voice start-at-login entry");
+                return false;
+            }
             return true;
         }
     }
     false
 }
-
-/// Windows only for now: adds or removes me-voice in the per-user Run registry key.
-fn set_start_at_login(enabled: bool) {
-    #[cfg(target_os = "windows")]
-    {
-        const KEY: &str = RUN_KEY;
-        let mut cmd = std::process::Command::new("reg");
-        if enabled {
-            let Ok(exe) = std::env::current_exe() else { return };
-            cmd.args(["add", KEY, "/v", "me-voice", "/t", "REG_SZ", "/d"]).arg(exe).arg("/f");
-        } else {
-            cmd.args(["delete", KEY, "/v", "me-voice", "/f"]);
-        }
-        let _ = cmd.output();
-    }
-    #[cfg(not(target_os = "windows"))]
-    let _ = enabled;
-}
-

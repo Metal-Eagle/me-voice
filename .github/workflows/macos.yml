@@ -17,6 +17,8 @@ jobs:
         run: bash scripts/build-macos.sh --test
       - name: Build app and disk image (Apple silicon)
         run: bash scripts/build-macos.sh --dmg
+      - name: Smoke test packaged app startup and restart
+        run: bash scripts/smoke-macos.sh
       - uses: actions/upload-artifact@v4
         with:
           name: me-voice-macos

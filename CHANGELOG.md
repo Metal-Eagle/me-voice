@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1 - 2026-10-27
+
+- Fixed: macOS can start again after a normal quit or a crash. Stale IPC sockets are recovered without replacing a live listener, and Unix instances use sockets scoped to their data folder.
+- Fixed: saving settings during a dictation preserves its active profile, transcription options and insertion behaviour. Shortcut changes wait until the app is idle.
+- Fixed: late live-preview results from a cancelled recording cannot replace the next recording's words or stop it with an old voice command.
+- Fixed: the macOS tray icon is created only after the native event loop starts. Initialization failures are logged and reported instead of looking like a successful launch.
+- Fixed: Start at login now registers a per-user macOS LaunchAgent, with separate development-instance registration and visible errors if registration fails.
+- Fixed: macOS foreground-app detection enables automatic app profiles and per-app statistics. Profile names on Mac no longer gain a Windows .exe extension.
+- Fixed: Clear in Dictate paragraph discards the current audio segment, old live previews and queued transcription results, so deleted words and old send commands cannot come back.
+- Internal: added regression coverage and a macOS packaged-app smoke test for startup, quit and restart after a forced exit.
+
 ## 1.3.0 - 2026-10-27
 
 - New: **T3 native** under Settings → Profiles → **Insert text by**, offered only on a profile for T3 Code, when it's installed on this computer. That profile then sends what you dictate straight to the T3 Code thread you opened last, as its next message, without pasting. Start with "new chat" (or "nieuwe chat") to start a new chat in the same project instead, with the rest as its first message. If T3 Code can't take it, the text is typed instead.

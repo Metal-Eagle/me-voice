@@ -42,7 +42,9 @@ impl SettingsApp {
                 toggle(ui, &mut self.edit.sounds);
             });
             setting_row(ui, "Start at login", "Start me-voice when you sign in.", |ui| {
-                toggle(ui, &mut self.edit.start_at_login);
+                ui.add_enabled_ui(crate::app::login::SUPPORTED, |ui| {
+                    toggle(ui, &mut self.edit.start_at_login);
+                }).response.on_disabled_hover_text("Start at login is not supported on this platform.");
             });
             setting_row(ui, "Automatic updates", "Download and install new versions in the background.", |ui| {
                 toggle(ui, &mut self.edit.auto_update);

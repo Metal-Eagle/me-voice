@@ -75,7 +75,8 @@ impl SettingsApp {
                 apps.remove(i);
             }
             ui.horizontal(|ui| {
-                let field = crate::ui::text_menu::add(ui, egui::TextEdit::singleline(&mut self.new_app).hint_text("ms-teams.exe").desired_width(200.0));
+                let hint = if cfg!(target_os = "macos") { "Safari" } else { "ms-teams.exe" };
+                let field = crate::ui::text_menu::add(ui, egui::TextEdit::singleline(&mut self.new_app).hint_text(hint).desired_width(200.0));
                 let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if ui.button("Add").clicked() || enter {
                     if let Some(app) = normal_app_name(&self.new_app) {
@@ -141,13 +142,13 @@ impl SettingsApp {
     }
 }
 
-/// A profile's app name as stored: lower-case, with ".exe" added when missing.
+/// A profile's executable name, with the Windows extension only on Windows.
 pub(super) fn normal_app_name(input: &str) -> Option<String> {
     let name = input.trim().to_lowercase();
     if name.is_empty() {
         return None;
     }
-    Some(if name.ends_with(".exe") { name } else { format!("{name}.exe") })
+    Some(if cfg!(windows) && !name.ends_with(".exe") { format!("{name}.exe") } else { name })
 }
 
 /// Dropdown for one profile override: "Same as Default" (None) or one of `options`.
@@ -175,6 +176,13 @@ mod tests {
 
     fn apps(names: &[&str]) -> Vec<String> {
         names.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn app_names_use_the_platform_executable_name() {
+        assert_eq!(normal_app_name("  Safari  "), Some(if cfg!(windows) { "safari.exe" } else { "safari" }.into()));
+        assert_eq!(normal_app_name(" Code.exe "), Some("code.exe".into()));
+        assert_eq!(normal_app_name("   "), None);
     }
 
     #[test]

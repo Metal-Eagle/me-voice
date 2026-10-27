@@ -57,7 +57,7 @@ enum Event {
     /// Live text for the line in progress (generation, text).
     Preview(u32, String),
     /// A finished line, transcribed with the main model.
-    Final(Result<String>),
+    Final(u64, Result<String>),
 }
 
 pub fn run() -> Result<()> {
@@ -79,14 +79,14 @@ pub fn run() -> Result<()> {
 
     let transcriber = Arc::new(Mutex::new(Transcriber::new()));
     let (event_tx, event_rx) = mpsc::channel();
-    let (job_tx, job_rx) = mpsc::channel::<Vec<f32>>();
+    let (job_tx, job_rx) = mpsc::channel::<(u64, Vec<f32>)>();
     {
         // Lines are transcribed one after the other, so they come back in order.
         let (settings, transcriber, event_tx) = (settings.clone(), transcriber.clone(), event_tx.clone());
         std::thread::spawn(move || {
-            for samples in job_rx {
+            for (revision, samples) in job_rx {
                 let result = crate::app::transcribe(&settings, &transcriber, &samples, false, None);
-                let _ = event_tx.send(Event::Final(result));
+                let _ = event_tx.send(Event::Final(revision, result));
             }
         });
     }
@@ -106,6 +106,7 @@ pub fn run() -> Result<()> {
         live: String::new(),
         offset: 0,
         generation: 0,
+        revision: 0,
         pending: 0,
         preview_running: false,
         preview_seconds: 0.0,
@@ -164,6 +165,8 @@ struct ParagraphApp {
     offset: usize,
     /// Goes up with every finished line, so late live updates for it are ignored.
     generation: u32,
+    /// Changes on Clear, invalidating every queued final result.
+    revision: u64,
     /// Finished lines still being transcribed.
     pending: usize,
     preview_running: bool,
@@ -172,7 +175,7 @@ struct ParagraphApp {
     /// Set once Paste is chosen: the window closes when the last line has come back.
     /// The flag says whether to press Enter after pasting.
     finishing: Option<bool>,
-    jobs: Sender<Vec<f32>>,
+    jobs: Sender<(u64, Vec<f32>)>,
     events_tx: Sender<Event>,
     events: Receiver<Event>,
     commands: Receiver<Command>,
@@ -188,18 +191,25 @@ impl ParagraphApp {
         let all = rec.snapshot();
         let line = all.get(self.offset..).unwrap_or_default().to_vec();
         self.offset = all.len();
-        self.generation += 1;
+        self.generation = self.generation.wrapping_add(1);
         self.preview_abort.store(true, Ordering::Relaxed);
+        self.preview_running = false;
         self.live.clear();
         let line = if self.settings.trim_silence { audio::trim_silence(&line, self.settings.silence_level) } else { line };
         if line.len() < MIN_CLIP_SAMPLES {
             return;
         }
         self.pending += 1;
-        let _ = self.jobs.send(line);
+        if let Err(e) = self.jobs.send((self.revision, line)) {
+            self.pending -= 1;
+            crate::app::log::write(&format!("paragraph: could not queue line: {e}"));
+        }
     }
 
-    fn on_final(&mut self, result: Result<String>) {
+    fn on_final(&mut self, revision: u64, result: Result<String>) {
+        if revision != self.revision {
+            return;
+        }
         self.pending = self.pending.saturating_sub(1);
         let text = match result {
             Ok(text) => text,
@@ -231,10 +241,10 @@ impl ParagraphApp {
     }
 
     fn on_preview(&mut self, generation: u32, text: String) {
-        self.preview_running = false;
         if generation != self.generation {
             return;
         }
+        self.preview_running = false;
         let text = text.trim().to_string();
         if let Some(rest) = cleanup::strip_line_break(&text, &self.settings.language) {
             // You said "new line": show the words up to it and lock them in.
@@ -255,7 +265,7 @@ impl ParagraphApp {
         while let Ok(event) = self.events.try_recv() {
             match event {
                 Event::Preview(generation, text) => self.on_preview(generation, text),
-                Event::Final(result) => self.on_final(result),
+                Event::Final(revision, result) => self.on_final(revision, result),
             }
         }
         let Some(rec) = &self.rec else { return };
@@ -306,6 +316,19 @@ impl ParagraphApp {
             self.new_line();
             self.finishing = Some(press_enter);
         }
+    }
+
+    fn clear(&mut self) {
+        self.preview_abort.store(true, Ordering::Relaxed);
+        self.generation = self.generation.wrapping_add(1);
+        self.revision = self.revision.wrapping_add(1);
+        self.pending = 0;
+        self.preview_running = false;
+        self.preview_seconds = self.rec.as_ref().map_or(0.0, Recording::seconds);
+        self.offset = self.rec.as_ref().map_or(0, |rec| rec.snapshot().len());
+        self.text.clear();
+        self.live.clear();
+        self.finishing = None;
     }
 
     fn close(&mut self, ctx: &egui::Context, paste: bool) {
@@ -413,7 +436,7 @@ impl eframe::App for ParagraphApp {
                 ctx.copy_text(self.text.trim().to_string());
             }
             if ui.button("Clear").clicked() {
-                self.text.clear();
+                self.clear();
             }
             if ui.button("Cancel").on_hover_text("Esc").clicked() {
                 self.close(&ctx, false);
@@ -423,5 +446,73 @@ impl eframe::App for ParagraphApp {
             }
             ui.weak(format!("{words} words"));
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app() -> ParagraphApp {
+        let settings = Settings::default();
+        let (jobs, _) = mpsc::channel();
+        let (events_tx, events) = mpsc::channel();
+        let (_, commands) = mpsc::channel();
+        ParagraphApp {
+            preview_settings: settings.clone(),
+            settings,
+            rec: None,
+            transcriber: Arc::new(Mutex::new(Transcriber::new())),
+            text: "Old paragraph".into(),
+            live: "Old live words".into(),
+            offset: 100,
+            generation: 1,
+            revision: 0,
+            pending: 2,
+            preview_running: true,
+            preview_seconds: 1.0,
+            preview_abort: Arc::new(AtomicBool::new(false)),
+            finishing: None,
+            jobs,
+            events_tx,
+            events,
+            commands,
+            outcome: Arc::new(Mutex::new(Outcome::default())),
+            pause: 1.5,
+            loaded_pause: 1.5,
+        }
+    }
+
+    #[test]
+    fn clear_discards_pending_results_and_voice_commands() {
+        let mut app = app();
+        let old_revision = app.revision;
+        app.clear();
+        app.pending = 1;
+        app.on_final(old_revision, Ok("Old words send".into()));
+        assert!(app.text.is_empty());
+        assert!(app.live.is_empty());
+        assert!(app.finishing.is_none());
+        assert_eq!(app.pending, 1);
+        app.on_final(app.revision, Ok("New words.".into()));
+        assert_eq!(app.text, "New words.");
+        assert_eq!(app.pending, 0);
+    }
+
+    #[test]
+    fn clear_discards_old_previews_without_finishing_the_new_preview() {
+        let mut app = app();
+        let old_generation = app.generation;
+        let old_abort = app.preview_abort.clone();
+        app.clear();
+        assert!(old_abort.load(Ordering::Relaxed));
+        assert_eq!(app.offset, 0);
+        app.preview_running = true;
+        app.on_preview(old_generation, "Old words new line".into());
+        assert!(app.live.is_empty());
+        assert!(app.preview_running);
+        app.on_preview(app.generation, "Fresh words".into());
+        assert_eq!(app.live, "Fresh words");
+        assert!(!app.preview_running);
     }
 }

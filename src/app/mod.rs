@@ -8,6 +8,7 @@ pub mod apps;
 pub mod instance;
 pub mod ipc;
 pub mod log;
+pub mod login;
 pub mod power;
 pub mod tray;
 pub mod update;
@@ -64,7 +65,7 @@ enum UserEvent {
     /// The text went to the AI; the pill shows it.
     Polishing,
     /// Live (partial) transcription while still recording.
-    Partial(String),
+    Partial { recording: u64, text: String },
     Update(UpdateResult),
 }
 
@@ -91,12 +92,14 @@ struct App {
     dictation: Option<HotKey>,
     cancel: Option<HotKey>,
     hotkey_paused: bool,
+    hotkeys_dirty: bool,
     state: State,
     tray: Tray,
     overlay: Option<Overlay>,
     /// Words recognised so far, shown in the pill.
     live_text: String,
     partial_running: bool,
+    recording_id: u64,
     /// Live preview runs in this dictation (logged, to see that it works).
     partial_count: u32,
     /// Tells a running live preview to stop, so the final transcription can start at once.
@@ -176,6 +179,14 @@ fn decide(mode: HotkeyMode, stage: Stage, edge: HotKeyState, threshold: Duration
     }
 }
 
+fn finish_preview(current: u64, result: u64, running: &mut bool) -> bool {
+    if result != current {
+        return false;
+    }
+    *running = false;
+    true
+}
+
 pub fn run() -> Result<()> {
     crate::settings::migrate_from_mc_voice();
     // Only one tray app at a time: a second start just opens the settings window.
@@ -203,51 +214,21 @@ pub fn run() -> Result<()> {
         let _ = proxy.lock().unwrap().send_event(UserEvent::Ipc(cmd));
     })?;
 
-    let mut app = App {
-        settings: Settings::load(),
-        active: Settings::load(),
-        hotkeys: GlobalHotKeyManager::new().map_err(|e| anyhow!("shortcuts: {e}"))?,
-        dictation: None,
-        cancel: None,
-        hotkey_paused: false,
-        state: State::Idle,
-        tray: Tray::new()?,
-        overlay: None,
-        live_text: String::new(),
-        partial_running: false,
-        partial_count: 0,
-        partial_abort: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        partial_seconds: 0.0,
-        show_result_until: None,
-        clip_seconds: 0.0,
-        quit_requested: false,
-        transcriber: Arc::new(Mutex::new(Transcriber::new())),
-        proxy: event_loop.create_proxy(),
-        target_app: None,
-        forced_profile: None,
-        active_profile: None,
-        extra: HashMap::new(),
-        started_by: None,
-        last_text: String::new(),
-        countdown: None,
-        command_mode: false,
-        context: None,
-        polishing: false,
-        warm: None,
-        update_running: false,
-        update_manual: false,
-        next_update_check: Instant::now() + UPDATE_FIRST,
-        pending_install: None,
-    };
-    app.register_hotkey();
-
-    // First run: open settings so the model can be downloaded.
-    let model_missing = models::find(&app.settings.model_id).map_or(true, |m| !m.is_downloaded());
-    if model_missing {
-        open_settings();
-    }
-
+    let mut app = None;
+    let proxy = event_loop.create_proxy();
     event_loop.run(move |event, target, control_flow| {
+        if matches!(event, Event::NewEvents(StartCause::Init)) {
+            match App::new(proxy.clone()) {
+                Ok(initialized) => app = Some(initialized),
+                Err(e) => {
+                    log::write(&format!("app initialization failed: {e:#}"));
+                    notify("me-voice could not start", &format!("{e:#}"));
+                    *control_flow = ControlFlow::ExitWithCode(1);
+                    return;
+                }
+            }
+        }
+        let Some(app) = app.as_mut() else { return };
         match event {
             Event::UserEvent(UserEvent::HotKey(e)) => app.on_hotkey(e),
             Event::UserEvent(UserEvent::Menu(e)) => {
@@ -275,21 +256,7 @@ pub fn run() -> Result<()> {
             Event::UserEvent(UserEvent::Transcribed(result)) => app.on_transcribed(result),
             Event::UserEvent(UserEvent::Polishing) => app.polishing = true,
             Event::UserEvent(UserEvent::Update(result)) => app.on_update(result),
-            Event::UserEvent(UserEvent::Partial(text)) => {
-                app.partial_running = false;
-                if matches!(app.state, State::Recording { .. }) {
-                    // "…stop" / "…send" at the end: stop listening right away.
-                    // "scratch that" is only a whole-dictation command, so it doesn't stop early.
-                    let command = cleanup::voice_command(&text, &app.settings).filter(|(c, _)| *c != cleanup::VoiceCommand::Scratch);
-                    if let Some((command, rest)) = command {
-                        log::write(&format!("voice command: {command:?}"));
-                        app.live_text = rest;
-                        app.stop_recording();
-                    } else if !text.trim().is_empty() {
-                        app.live_text = text;
-                    }
-                }
-            }
+            Event::UserEvent(UserEvent::Partial { recording, text }) => app.on_partial(recording, text),
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => app.unload_if_idle(),
             Event::RedrawRequested(id) => {
                 if let Some(o) = app.overlay.as_mut().filter(|o| o.window_id() == id) {
@@ -317,11 +284,70 @@ pub fn run() -> Result<()> {
         }
         app.check_auto_stop();
         app.update_overlay(target);
+        if matches!(app.state, State::Idle) && app.hotkeys_dirty && !app.hotkey_paused {
+            app.register_hotkey();
+            app.hotkeys_dirty = false;
+        }
         *control_flow = app.next_wake();
     });
 }
 
 impl App {
+    fn new(proxy: EventLoopProxy<UserEvent>) -> Result<Self> {
+        let settings = Settings::load();
+        let mut app = Self {
+            active: settings.clone(),
+            settings,
+            hotkeys: GlobalHotKeyManager::new().map_err(|e| anyhow!("shortcuts: {e}"))?,
+            dictation: None,
+            cancel: None,
+            hotkey_paused: false,
+            hotkeys_dirty: false,
+            state: State::Idle,
+            tray: Tray::new()?,
+            overlay: None,
+            live_text: String::new(),
+            partial_running: false,
+            recording_id: 0,
+            partial_count: 0,
+            partial_abort: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            partial_seconds: 0.0,
+            show_result_until: None,
+            clip_seconds: 0.0,
+            quit_requested: false,
+            transcriber: Arc::new(Mutex::new(Transcriber::new())),
+            proxy,
+            target_app: None,
+            forced_profile: None,
+            active_profile: None,
+            extra: HashMap::new(),
+            started_by: None,
+            last_text: String::new(),
+            countdown: None,
+            command_mode: false,
+            context: None,
+            polishing: false,
+            warm: None,
+            update_running: false,
+            update_manual: false,
+            next_update_check: Instant::now() + UPDATE_FIRST,
+            pending_install: None,
+        };
+        app.register_hotkey();
+        if !models::find(&app.settings.model_id).is_some_and(|m| m.is_downloaded()) {
+            open_settings();
+        }
+        #[cfg(target_os = "macos")]
+        if app.settings.start_at_login {
+            if let Err(e) = login::set_enabled(true) {
+                log::write(&format!("could not restore start at login: {e:#}"));
+                notify("Could not enable start at login", &format!("{e:#}"));
+            }
+        }
+        log::write("app initialized");
+        Ok(app)
+    }
+
     fn register_hotkey(&mut self) {
         self.unregister_hotkeys();
         match self.settings.hotkey.parse::<HotKey>() {
@@ -413,8 +439,9 @@ impl App {
             State::Recording { pressed_at, latched, .. } => Stage::Recording { latched: *latched, held_for: pressed_at.elapsed() },
             State::Transcribing => Stage::Busy,
         };
-        let threshold = Duration::from_millis(self.settings.hold_threshold_ms);
-        match decide(self.settings.hotkey_mode, stage, e.state, threshold) {
+        let current = if matches!(self.state, State::Recording { .. }) { &self.active } else { &self.settings };
+        let threshold = Duration::from_millis(current.hold_threshold_ms);
+        match decide(current.hotkey_mode, stage, e.state, threshold) {
             Step::Start => {
                 self.forced_profile = profile.filter(|p| !p.trim().is_empty());
                 self.started_by = Some(e.id);
@@ -446,9 +473,8 @@ impl App {
             Command::Reload => {
                 let old_model = self.settings.model_id.clone();
                 self.settings = Settings::load();
-                self.active = self.settings.clone();
-                self.register_hotkey();
-                if self.settings.model_id != old_model {
+                self.hotkeys_dirty = true;
+                if self.settings.model_id != old_model && matches!(self.state, State::Idle) {
                     self.transcriber.lock().unwrap().unload();
                 }
             }
@@ -461,7 +487,7 @@ impl App {
             Command::ResumeHotkey => {
                 self.hotkey_paused = false;
                 self.settings = Settings::load();
-                self.register_hotkey();
+                self.hotkeys_dirty = true;
             }
             Command::ShowSettings => open_settings(),
             Command::Quit => self.quit_requested = true,
@@ -483,8 +509,10 @@ impl App {
             open_settings();
             return;
         }
-        match audio::start(self.settings.microphone.as_deref()) {
+        match audio::start(self.active.microphone.as_deref()) {
             Ok(rec) => {
+                self.recording_id = self.recording_id.wrapping_add(1);
+                self.partial_running = false;
                 self.state = State::Recording { rec, pressed_at: Instant::now(), latched };
                 self.live_text.clear();
                 self.partial_seconds = 0.0;
@@ -495,7 +523,7 @@ impl App {
                 self.warm = Some(crate::text::polish::warm_up(&self.active, self.command_mode, &self.active.ai_style));
                 self.tray.set_status(Status::Recording);
                 self.set_cancel_key(true);
-                if self.settings.sounds {
+                if self.active.sounds {
                     sound::play(Beep::Start);
                 }
                 log::write("listening");
@@ -524,12 +552,12 @@ impl App {
         let samples = rec.stop();
         self.clip_seconds = samples.len() as f32 / SAMPLE_RATE as f32;
         // Quiet parts are cut before transcribing: faster, and no made-up words from silence.
-        let samples = if self.settings.trim_silence {
-            audio::trim_silence(&samples, self.settings.silence_level)
+        let samples = if self.active.trim_silence {
+            audio::trim_silence(&samples, self.active.silence_level)
         } else {
             samples
         };
-        if self.settings.sounds {
+        if self.active.sounds {
             sound::play(Beep::Stop);
         }
         if samples.len() < SAMPLE_RATE * MIN_CLIP.as_millis() as usize / 1000 {
@@ -701,8 +729,8 @@ impl App {
     /// Stops a tap-started dictation after the chosen seconds of silence, and sets the
     /// countdown shown in the pill during the last seconds. Runs on the frame tick.
     fn check_auto_stop(&mut self) {
-        let limit = self.settings.auto_stop_seconds as f32;
-        let level = self.settings.silence_level;
+        let limit = self.active.auto_stop_seconds as f32;
+        let level = self.active.silence_level;
         let State::Recording { rec, latched: true, .. } = &self.state else {
             self.countdown = None;
             return;
@@ -729,7 +757,7 @@ impl App {
             return;
         }
         // Nothing new to recognise while you're silent: skip the work.
-        if !rec.has_sound(self.settings.silence_level) {
+        if !rec.has_sound(self.active.silence_level) {
             return;
         }
         self.partial_running = true;
@@ -744,6 +772,7 @@ impl App {
         let abort = Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.partial_abort = abort.clone();
         let settings = self.active.clone();
+        let recording = self.recording_id;
         let transcriber = self.transcriber.clone();
         let proxy = self.proxy.clone();
         std::thread::spawn(move || {
@@ -758,8 +787,25 @@ impl App {
             if !abort.load(std::sync::atomic::Ordering::Relaxed) {
                 power::set_priority(power::Priority::Normal);
             }
-            let _ = proxy.send_event(UserEvent::Partial(text));
+            let _ = proxy.send_event(UserEvent::Partial { recording, text });
         });
+    }
+
+    fn on_partial(&mut self, recording: u64, text: String) {
+        if !finish_preview(self.recording_id, recording, &mut self.partial_running) {
+            return;
+        }
+        if !matches!(self.state, State::Recording { .. }) {
+            return;
+        }
+        let command = cleanup::voice_command(&text, &self.active).filter(|(c, _)| *c != cleanup::VoiceCommand::Scratch);
+        if let Some((command, rest)) = command {
+            log::write(&format!("voice command: {command:?}"));
+            self.live_text = rest;
+            self.stop_recording();
+        } else if !text.trim().is_empty() {
+            self.live_text = text;
+        }
     }
 
     fn next_wake(&self) -> ControlFlow {
@@ -917,6 +963,15 @@ mod tests {
 
     fn recording(latched: bool, held_for: Duration) -> Stage {
         Stage::Recording { latched, held_for }
+    }
+
+    #[test]
+    fn late_preview_cannot_complete_a_new_recordings_preview() {
+        let mut running = true;
+        assert!(!finish_preview(2, 1, &mut running));
+        assert!(running);
+        assert!(finish_preview(2, 2, &mut running));
+        assert!(!running);
     }
 
     #[test]

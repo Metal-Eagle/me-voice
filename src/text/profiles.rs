@@ -18,8 +18,18 @@ pub fn matching<'a>(settings: &'a Settings, app: Option<&str>, forced: Option<&s
     let forced = forced.and_then(|name| settings.profiles.iter().find(|p| p.name.eq_ignore_ascii_case(name)));
     forced.or_else(|| {
         let app = app?;
-        settings.profiles.iter().find(|p| p.apps.iter().any(|a| a.eq_ignore_ascii_case(app)))
+        settings.profiles.iter().find(|p| p.apps.iter().any(|a| app_matches(a, app)))
     })
+}
+
+fn app_matches(configured: &str, actual: &str) -> bool {
+    if configured.eq_ignore_ascii_case(actual) {
+        return true;
+    }
+    #[cfg(target_os = "macos")]
+    { configured.strip_suffix(".exe").is_some_and(|name| name.eq_ignore_ascii_case(actual)) }
+    #[cfg(not(target_os = "macos"))]
+    { false }
 }
 
 /// Copies every override that is set onto `settings`.
@@ -118,5 +128,13 @@ mod tests {
         let s = settings();
         assert_eq!(matching(&s, Some("MS-Teams.EXE"), None).map(|p| p.name.as_str()), Some("Chat"));
         assert_eq!(matching(&s, None, Some("nederlands")).map(|p| p.name.as_str()), Some("Nederlands"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn mac_profiles_keep_working_with_previously_added_exe_suffixes() {
+        assert!(app_matches("safari.exe", "Safari"));
+        assert!(app_matches("google chrome", "Google Chrome"));
+        assert!(!app_matches("safari.exe", "Google Chrome"));
     }
 }
