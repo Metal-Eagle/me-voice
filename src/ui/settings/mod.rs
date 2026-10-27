@@ -348,11 +348,14 @@ fn non_empty(setting: &str, fallback: &str) -> String {
     }
 }
 
-/// The SAY cell of a built-in command: the phrase in bold, its Dutch alias weak.
-fn say_cell(ui: &mut egui::Ui, say: &str, alias: &str) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(say).strong());
-        ui.weak(format!("· {alias}"));
+/// The SAY cell of a built-in command: the phrase in bold, its Dutch alias weak, wrapped at `width`.
+fn say_cell(ui: &mut egui::Ui, say: &str, alias: &str, width: f32) {
+    ui.scope(|ui| {
+        ui.set_max_width(width);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(say).strong());
+            ui.weak(format!("· {alias}"));
+        });
     });
 }
 

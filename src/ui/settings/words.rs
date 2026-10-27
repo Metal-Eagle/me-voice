@@ -13,18 +13,18 @@ impl SettingsApp {
             ui.add_space(6.0);
             let mut remove = None;
             let width = ui.available_width();
-            let say_w = (width * 0.28).max(120.0);
-            let text_w = (width - say_w - 60.0).max(140.0);
+            // The rest is two gaps and the remove column, which a grid keeps `interact_size.x` wide.
+            let say_w = (width * 0.28).max(90.0);
+            let text_w = (width - say_w - 56.0).max(60.0);
             egui::Grid::new("snippets").num_columns(3).spacing([8.0, 8.0]).show(ui, |ui| {
                 for head in ["SAY", "INSERTS", ""] {
                     ui.label(egui::RichText::new(head).weak().size(11.0));
                 }
                 ui.end_row();
                 for (i, (phrase, text)) in self.snippets.iter_mut().enumerate() {
-                    crate::ui::text_menu::add(ui, egui::TextEdit::singleline(phrase).hint_text("my sign off").desired_width(say_w).margin(egui::vec2(8.0, 6.0)));
-                    crate::ui::text_menu::add(ui, egui::TextEdit::multiline(text).hint_text("Kind regards,
-Alex").desired_rows(1).desired_width(text_w).margin(egui::vec2(8.0, 6.0)));
-                    if ui.button("✕").on_hover_text("Remove").clicked() {
+                    grid_edit(ui, say_w, egui::TextEdit::singleline(phrase).hint_text("my sign off"));
+                    grid_edit(ui, text_w, egui::TextEdit::multiline(text).hint_text("Kind regards,\nAlex").desired_rows(1));
+                    if theme::remove_button(ui).clicked() {
                         remove = Some(i);
                     }
                     ui.end_row();
@@ -50,7 +50,7 @@ Alex").desired_rows(1).desired_width(text_w).margin(egui::vec2(8.0, 6.0)));
             crate::ui::text_menu::add(ui, egui::TextEdit::multiline(&mut self.dictionary).hint_text("Kubernetes
 Anna
 Zoe").desired_rows(4).desired_width(f32::INFINITY).margin(egui::vec2(8.0, 6.0)));
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.weak("Replacements (for example \"cuber netties\" becomes \"Kubernetes\") and snippets live in");
                 if ui.link("dictionary.json").clicked() {
                     crate::text::cleanup::load_dictionary();
@@ -115,8 +115,10 @@ Zoe").desired_rows(4).desired_width(f32::INFINITY).margin(egui::vec2(8.0, 6.0)))
             ("all caps word", "hoofdletters woord", "Next word in capitals", Scope::Anywhere),
             ("scratch that", "weg ermee", "Undo the last paste", Scope::Whole),
         ];
-        let say_w = (width * 0.28).max(120.0);
-        let does_w = (width - say_w - if wide { 250.0 } else { 90.0 }).max(140.0);
+        // The phrases with their Dutch aliases are the long side. The rest is the gaps, the WHERE
+        // tags and the remove column, which a grid keeps at least `interact_size.x` wide.
+        let say_w = (width * 0.42).max(90.0);
+        let does_w = (width - say_w - if wide { 160.0 } else { 56.0 }).max(60.0);
         let mut remove = None;
         egui::Grid::new("voice_commands").num_columns(if wide { 4 } else { 3 }).spacing([8.0, 8.0]).show(ui, |ui| {
             for head in if wide { vec!["SAY", "DOES", "WHERE", ""] } else { vec!["SAY", "DOES", ""] } {
@@ -124,8 +126,8 @@ Zoe").desired_rows(4).desired_width(f32::INFINITY).margin(egui::vec2(8.0, 6.0)))
             }
             ui.end_row();
             for (say, alias, does, scope) in built_in {
-                say_cell(ui, say, alias);
-                ui.label(does);
+                say_cell(ui, say, alias, say_w);
+                wrapped_cell(ui, does_w, does);
                 if wide {
                     scope_tag(ui, scope);
                 }
@@ -133,8 +135,8 @@ Zoe").desired_rows(4).desired_width(f32::INFINITY).margin(egui::vec2(8.0, 6.0)))
                 ui.end_row();
             }
             for (say, does) in [(send.as_str(), "Paste, then press Enter"), (stop.as_str(), "Stop listening")] {
-                ui.label(egui::RichText::new(say).strong());
-                ui.label(does);
+                wrapped_cell(ui, say_w, egui::RichText::new(say).strong());
+                wrapped_cell(ui, does_w, does);
                 if wide {
                     scope_tag(ui, Scope::End);
                 }
@@ -142,12 +144,12 @@ Zoe").desired_rows(4).desired_width(f32::INFINITY).margin(egui::vec2(8.0, 6.0)))
                 ui.end_row();
             }
             for (i, (say, text)) in self.commands.iter_mut().enumerate() {
-                crate::ui::text_menu::add(ui, egui::TextEdit::singleline(say).hint_text("sign off").desired_width(say_w).margin(egui::vec2(8.0, 6.0)));
-                crate::ui::text_menu::add(ui, egui::TextEdit::multiline(text).hint_text("Kind regards,\nAlex").desired_rows(1).desired_width(does_w).margin(egui::vec2(8.0, 6.0)));
+                grid_edit(ui, say_w, egui::TextEdit::singleline(say).hint_text("sign off"));
+                grid_edit(ui, does_w, egui::TextEdit::multiline(text).hint_text("Kind regards,\nAlex").desired_rows(1));
                 if wide {
                     scope_tag(ui, Scope::Anywhere);
                 }
-                if ui.button("✕").on_hover_text("Remove").clicked() {
+                if theme::remove_button(ui).clicked() {
                     remove = Some(i);
                 }
                 ui.end_row();
@@ -160,5 +162,21 @@ Zoe").desired_rows(4).desired_width(f32::INFINITY).margin(egui::vec2(8.0, 6.0)))
             self.commands.push((String::new(), String::new()));
         }
     }
+}
 
+/// A label that wraps at `width` in a grid cell, so a long one can't widen the whole page.
+fn wrapped_cell(ui: &mut egui::Ui, width: f32, text: impl Into<egui::WidgetText>) {
+    ui.scope(|ui| {
+        ui.set_max_width(width);
+        ui.add(egui::Label::new(text).wrap());
+    });
+}
+
+/// A text box `width` wide in a grid cell. A grid offers a cell only last frame's column
+/// width, so a plain text box there shrinks to its header's width and stays that narrow.
+fn grid_edit(ui: &mut egui::Ui, width: f32, edit: egui::TextEdit) {
+    ui.scope(|ui| {
+        ui.set_min_width(width);
+        crate::ui::text_menu::add(ui, edit.desired_width(width).margin(egui::vec2(8.0, 6.0)));
+    });
 }

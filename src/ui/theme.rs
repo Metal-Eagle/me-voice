@@ -195,6 +195,20 @@ pub fn section_label(ui: &mut egui::Ui, text: &str) {
     ui.add_space(2.0);
 }
 
+/// Small square button with a painted cross (Segoe UI has no ✕ glyph), for removing a row.
+pub fn remove_button(ui: &mut egui::Ui) -> egui::Response {
+    let side = ui.spacing().interact_size.y;
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(side), egui::Sense::click());
+    let visuals = ui.style().interact(&response);
+    let painter = ui.painter();
+    painter.rect_filled(rect, visuals.corner_radius, visuals.weak_bg_fill);
+    let (c, r) = (rect.center(), 4.5);
+    let stroke = Stroke::new(1.5, visuals.fg_stroke.color);
+    painter.line_segment([c + Vec2::new(-r, -r), c + Vec2::new(r, r)], stroke);
+    painter.line_segment([c + Vec2::new(-r, r), c + Vec2::new(r, -r)], stroke);
+    response.on_hover_text("Remove")
+}
+
 /// Sidebar item with icon; returns true when clicked.
 pub fn nav_item(ui: &mut egui::Ui, icon: Icon, label: &str, selected: bool) -> bool {
     let size = Vec2::new(ui.available_width(), 38.0);
