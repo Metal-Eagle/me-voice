@@ -10,7 +10,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 
 const REPO: &str = "Metal-Eagle/me-voice";
@@ -101,7 +101,7 @@ pub fn install(installer: &std::path::Path) -> Result<()> {
 
 #[cfg(not(windows))]
 pub fn install(_installer: &std::path::Path) -> Result<()> {
-    bail!("automatic install is only available on Windows")
+    anyhow::bail!("automatic install is only available on Windows")
 }
 
 /// Whether this platform can install a release by itself.
