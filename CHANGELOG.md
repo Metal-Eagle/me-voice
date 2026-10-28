@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1 - 2026-10-28
+
+- Fixed: threads started through T3 Code's own tools (their id starts with `mcp:`) were missing from the thread list on the listening card, so it didn't match T3. Threads in deleted projects are left out too.
+- New: each thread on the card shows its project's name before the thread title.
+
 ## 1.5.0 - 2026-10-28
 
 - New: when dictating to T3 Code, the listening card lists the threads you opened most recently, with the one the text will go to highlighted. Press 1–6 (top row or numpad) while talking to send it to a different thread instead. Press 0 to start a new thread: the list switches to your recent projects (the current thread's project is picked), and 1–6 picks another one; 0 again goes back to the threads. The number keys are only taken over while you dictate to T3.

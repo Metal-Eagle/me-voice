@@ -825,7 +825,7 @@ impl App {
             if self.t3_new {
                 o.set_threads(self.t3_projects.iter().map(|p| p.title.clone()).collect(), self.t3_project, true);
             } else {
-                o.set_threads(self.t3_threads.iter().map(|t| t.title.clone()).collect(), self.t3_choice, false);
+                o.set_threads(self.t3_threads.iter().map(apps::T3Thread::label).collect(), self.t3_choice, false);
             }
             o.update(phase, levels, &self.live_text);
         }

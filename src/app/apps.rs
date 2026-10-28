@@ -30,10 +30,11 @@ fn t3_home() -> Option<std::path::PathBuf> {
     }
 }
 
-/// A thread id ends up on a command line, so only accept what a UUID is made of.
+/// A thread id ends up on a command line, so only accept what a UUID is made of, with the
+/// `mcp:` prefix T3 gives threads started through its tools.
 #[cfg(any(windows, test))]
 fn is_thread_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    !id.is_empty() && id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == ':')
 }
 
 /// Project ids are a UUID with a prefix, e.g. `mcp:1c5fb07e-…`.
@@ -63,7 +64,20 @@ pub fn new_chat_message(text: &str) -> Option<&str> {
 pub struct T3Thread {
     pub id: String,
     pub project: String,
+    /// The name of the project, as in T3's project list.
+    pub project_title: String,
     pub title: String,
+}
+
+impl T3Thread {
+    /// The row on the card: the project's name, then the thread's title.
+    pub fn label(&self) -> String {
+        match (self.project_title.trim(), self.title.trim()) {
+            ("", title) => title.to_string(),
+            (project, "") => format!("{project} · Untitled thread"),
+            (project, title) => format!("{project} · {title}"),
+        }
+    }
 }
 
 /// A T3 Code project a new thread can start in.
@@ -127,16 +141,17 @@ fn recent_projects_in(conn: &rusqlite::Connection, limit: usize) -> anyhow::Resu
 }
 
 /// Like `last_opened_thread_in`, ordered by when the user opened each thread, with its title;
-/// archived and deleted threads are left out.
+/// archived and deleted threads, and threads of deleted projects, are left out.
 #[cfg(windows)]
 fn recent_threads_in(conn: &rusqlite::Connection, limit: usize) -> anyhow::Result<Vec<T3Thread>> {
     let mut query = conn.prepare(
-        "SELECT e.stream_id, t.project_id, COALESCE(t.title, ''), MAX(json_extract(e.payload_json, '$.opens.openedAt')) AS opened
+        "SELECT e.stream_id, t.project_id, COALESCE(p.title, ''), COALESCE(t.title, ''), MAX(json_extract(e.payload_json, '$.opens.openedAt')) AS opened
          FROM orchestration_events e JOIN orchestration_v2_projection_threads t ON t.thread_id = e.stream_id
-         WHERE e.event_type = 'thread.visited' AND t.archived_at IS NULL AND t.deleted_at IS NULL
+         JOIN projection_projects p ON p.project_id = t.project_id
+         WHERE e.event_type = 'thread.visited' AND t.archived_at IS NULL AND t.deleted_at IS NULL AND p.deleted_at IS NULL
          GROUP BY e.stream_id HAVING opened IS NOT NULL ORDER BY opened DESC LIMIT ?1",
     )?;
-    let rows = query.query_map([limit as i64], |row| Ok(T3Thread { id: row.get(0)?, project: row.get(1)?, title: row.get(2)? }))?;
+    let rows = query.query_map([limit as i64], |row| Ok(T3Thread { id: row.get(0)?, project: row.get(1)?, project_title: row.get(2)?, title: row.get(3)? }))?;
     Ok(rows.flatten().filter(|t| is_thread_id(&t.id) && is_project_id(&t.project)).collect())
 }
 
@@ -292,26 +307,25 @@ mod tests {
         conn.execute_batch(
             "CREATE TABLE orchestration_events (sequence INTEGER, stream_id TEXT, event_type TEXT, payload_json TEXT);
              CREATE TABLE orchestration_v2_projection_threads (thread_id TEXT, project_id TEXT, title TEXT, archived_at TEXT, deleted_at TEXT);
+             CREATE TABLE projection_projects (project_id TEXT, title TEXT, deleted_at TEXT);
+             INSERT INTO projection_projects VALUES ('mcp:p1', 'One', NULL), ('mcp:p2', 'Two', NULL), ('mcp:p3', 'Gone', '2026');
              INSERT INTO orchestration_v2_projection_threads VALUES
-               ('aaaa', 'mcp:p1', 'First', NULL, NULL), ('bbbb', 'mcp:p2', 'Second', NULL, NULL),
-               ('cccc', 'mcp:p1', 'Old', '2026', NULL), ('dddd', 'mcp:p1', 'Never opened', NULL, NULL);
+               ('aaaa', 'mcp:p1', 'First', NULL, NULL), ('mcp:bbbb', 'mcp:p2', 'Second', NULL, NULL),
+               ('cccc', 'mcp:p1', 'Old', '2026', NULL), ('dddd', 'mcp:p1', 'Never opened', NULL, NULL),
+               ('eeee', 'mcp:p3', 'Deleted project', NULL, NULL);
              INSERT INTO orchestration_events VALUES
                (1, 'aaaa', 'thread.visited', '{\"opens\":{\"openedAt\":1000}}'),
-               (2, 'bbbb', 'thread.visited', '{\"opens\":{\"openedAt\":2000}}'),
+               (2, 'mcp:bbbb', 'thread.visited', '{\"opens\":{\"openedAt\":2000}}'),
                (3, 'aaaa', 'thread.visited', '{\"opens\":{\"openedAt\":3000}}'),
-               (4, 'bbbb', 'thread.visited', '{\"opens\":{\"openedAt\":2000}}'),
+               (7, 'eeee', 'thread.visited', '{\"opens\":{\"openedAt\":5000}}'),
+               (4, 'mcp:bbbb', 'thread.visited', '{\"opens\":{\"openedAt\":2000}}'),
                (5, 'cccc', 'thread.visited', '{\"opens\":{\"openedAt\":4000}}'),
                (6, 'dddd', 'thread.visited', '{\"opens\":null}');",
         )
         .unwrap();
-        let titles: Vec<_> = recent_threads_in(&conn, 6).unwrap().into_iter().map(|t| t.title).collect();
-        assert_eq!(titles, ["First", "Second"]);
+        let titles: Vec<_> = recent_threads_in(&conn, 6).unwrap().into_iter().map(|t| (t.project_title, t.title)).collect();
+        assert_eq!(titles, [("One".into(), "First".into()), ("Two".to_string(), "Second".to_string())]);
         assert_eq!(recent_threads_in(&conn, 1).unwrap().len(), 1);
-        conn.execute_batch(
-            "CREATE TABLE projection_projects (project_id TEXT, title TEXT, deleted_at TEXT);
-             INSERT INTO projection_projects VALUES ('mcp:p1', 'One', NULL), ('mcp:p2', 'Two', NULL);",
-        )
-        .unwrap();
         let projects: Vec<_> = recent_projects_in(&conn, 6).unwrap().into_iter().map(|p| p.title).collect();
         assert_eq!(projects, ["One", "Two"]);
     }
@@ -337,11 +351,12 @@ mod tests {
     #[test]
     fn thread_id_accepts_uuid_and_rejects_shell_text() {
         assert!(is_thread_id("37f31e6f-0151-40e9-8bc0-e62d96c6549d"));
-        assert!(is_thread_id(&"a".repeat(64)));
+        assert!(is_thread_id(&"a".repeat(80)));
         assert!(!is_thread_id(""));
         assert!(!is_thread_id("a b"));
         assert!(!is_thread_id("x;del"));
         assert!(!is_thread_id("../x"));
-        assert!(!is_thread_id(&"a".repeat(65)));
+        assert!(is_thread_id("mcp:b623482d-c4e0-40ed-a9bf-9497ad681124"));
+        assert!(!is_thread_id(&"a".repeat(81)));
     }
 }
