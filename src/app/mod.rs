@@ -132,6 +132,17 @@ struct App {
     command_mode: bool,
     /// The current dictation goes to T3 Code, whatever program is in front.
     force_t3: bool,
+    /// Recent T3 Code threads offered in the card while dictating to T3 (newest first).
+    t3_threads: Vec<apps::T3Thread>,
+    /// Index in `t3_threads` of the thread the text goes to, picked with the number keys.
+    t3_choice: usize,
+    /// Recent T3 projects, offered after 0 to start a new thread in one.
+    t3_projects: Vec<apps::T3Project>,
+    /// 0 was pressed: the text starts a new thread in `t3_projects[t3_project]`.
+    t3_new: bool,
+    t3_project: usize,
+    /// Number keys registered while dictating to T3, by hotkey id, with their number.
+    digit_keys: HashMap<u32, (HotKey, usize)>,
     /// Screen context read when the dictation started, arriving from a background thread.
     context: Option<std::sync::mpsc::Receiver<Context>>,
     /// The AI provider, started with the dictation so it is ready when the text is.
@@ -328,6 +339,12 @@ impl App {
             countdown: None,
             command_mode: false,
             force_t3: false,
+            t3_threads: Vec::new(),
+            t3_choice: 0,
+            t3_projects: Vec::new(),
+            t3_new: false,
+            t3_project: 0,
+            digit_keys: HashMap::new(),
             context: None,
             polishing: false,
             warm: None,
@@ -401,11 +418,79 @@ impl App {
         }
     }
 
+    /// While dictating to T3, the number keys (top row and numpad) pick the thread, 0 switches
+    /// to a new thread and then 1 and up pick its project. Only registered then, so they
+    /// never steal digits otherwise.
+    fn set_digit_keys(&mut self, active: bool) {
+        use global_hotkey::hotkey::Code;
+        for (_, (hk, _)) in self.digit_keys.drain() {
+            let _ = self.hotkeys.unregister(hk);
+        }
+        if !active {
+            return;
+        }
+        const KEYS: [(Code, Code); 10] = [
+            (Code::Digit0, Code::Numpad0),
+            (Code::Digit1, Code::Numpad1),
+            (Code::Digit2, Code::Numpad2),
+            (Code::Digit3, Code::Numpad3),
+            (Code::Digit4, Code::Numpad4),
+            (Code::Digit5, Code::Numpad5),
+            (Code::Digit6, Code::Numpad6),
+            (Code::Digit7, Code::Numpad7),
+            (Code::Digit8, Code::Numpad8),
+            (Code::Digit9, Code::Numpad9),
+        ];
+        if self.t3_threads.is_empty() && self.t3_projects.is_empty() {
+            return;
+        }
+        let rows = self.t3_threads.len().max(self.t3_projects.len());
+        for (i, (digit, numpad)) in KEYS.into_iter().take(rows + 1).enumerate() {
+            for code in [digit, numpad] {
+                let hk = HotKey::new(None, code);
+                if self.hotkeys.register(hk).is_ok() {
+                    self.digit_keys.insert(hk.id(), (hk, i));
+                }
+            }
+        }
+    }
+
+    /// A number key while dictating to T3: 0 toggles a new thread, 1 and up pick a row.
+    fn pick_t3(&mut self, n: usize) {
+        if n == 0 {
+            self.t3_new = !self.t3_new && !self.t3_projects.is_empty();
+            if self.t3_new {
+                // Start in the project of the thread that was picked.
+                let project = self.t3_threads.get(self.t3_choice).map(|t| t.project.as_str());
+                self.t3_project = self.t3_projects.iter().position(|p| Some(p.id.as_str()) == project).unwrap_or(0);
+            }
+        } else if self.t3_new && n <= self.t3_projects.len() {
+            self.t3_project = n - 1;
+        } else if !self.t3_new && n <= self.t3_threads.len() {
+            self.t3_choice = n - 1;
+        }
+    }
+
+    /// Where the current T3 dictation goes, as picked on the card.
+    fn t3_target(&self) -> Option<apps::T3Target> {
+        if self.t3_new {
+            self.t3_projects.get(self.t3_project).cloned().map(apps::T3Target::NewThread)
+        } else {
+            self.t3_threads.get(self.t3_choice).cloned().map(apps::T3Target::Thread)
+        }
+    }
+
     fn on_hotkey(&mut self, e: GlobalHotKeyEvent) {
         log::write(&format!("shortcut {:?}", e.state));
         if self.cancel.is_some_and(|c| c.id() == e.id) {
             if e.state == HotKeyState::Pressed {
                 self.cancel_recording();
+            }
+            return;
+        }
+        if let Some(&(_, n)) = self.digit_keys.get(&e.id) {
+            if e.state == HotKeyState::Pressed {
+                self.pick_t3(n);
             }
             return;
         }
@@ -512,6 +597,10 @@ impl App {
             // T3 native only sends from T3 Code itself; a forced or mixed profile types elsewhere.
             self.active.insert_mode = InsertMode::Type;
         }
+        (self.t3_threads, self.t3_projects) = if self.active.insert_mode == InsertMode::T3 { apps::recent() } else { Default::default() };
+        self.t3_choice = 0;
+        self.t3_new = false;
+        self.t3_project = 0;
         self.active_profile = profiles::matching(&self.settings, self.target_app.as_deref(), forced.as_deref()).map(|p| p.name.clone());
         let model_ready = models::find(&self.active.model_id).is_some_and(|m| m.is_downloaded());
         if !model_ready {
@@ -533,6 +622,7 @@ impl App {
                 self.warm = Some(crate::text::polish::warm_up(&self.active, self.command_mode, &self.active.ai_style));
                 self.tray.set_status(Status::Recording);
                 self.set_cancel_key(true);
+                self.set_digit_keys(true);
                 if self.active.sounds {
                     sound::play(Beep::Start);
                 }
@@ -549,6 +639,7 @@ impl App {
             drop(rec.stop());
         }
         self.set_cancel_key(false);
+        self.set_digit_keys(false);
         self.tray.set_status(Status::Idle);
     }
 
@@ -557,6 +648,7 @@ impl App {
             return;
         };
         self.set_cancel_key(false);
+        self.set_digit_keys(false);
         self.partial_abort.store(true, std::sync::atomic::Ordering::Relaxed);
         log::write(&format!("live preview updated {} times", self.partial_count));
         let samples = rec.stop();
@@ -642,11 +734,12 @@ impl App {
                 let skip_insert = std::env::var("ME_VOICE_NO_INSERT").as_deref() == Ok("1");
                 let mode = self.active.insert_mode;
                 let paste_text = text.clone();
+                let t3_target = self.t3_target();
                 std::thread::spawn(move || {
                     if skip_insert {
                         return;
                     }
-                    if let Err(e) = insert::insert(&paste_text, mode, press_enter) {
+                    if let Err(e) = insert::insert_to(&paste_text, mode, press_enter, t3_target.as_ref()) {
                         log::write(&e.to_string());
                     }
                 });
@@ -729,6 +822,11 @@ impl App {
         if let Some(o) = self.overlay.as_mut() {
             o.set_badge(badge);
             o.set_countdown(self.countdown);
+            if self.t3_new {
+                o.set_threads(self.t3_projects.iter().map(|p| p.title.clone()).collect(), self.t3_project, true);
+            } else {
+                o.set_threads(self.t3_threads.iter().map(|t| t.title.clone()).collect(), self.t3_choice, false);
+            }
             o.update(phase, levels, &self.live_text);
         }
         if phase == Phase::Listening {

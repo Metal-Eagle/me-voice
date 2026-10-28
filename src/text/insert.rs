@@ -16,6 +16,11 @@ const CLIPBOARD_RESTORE_DELAY: Duration = Duration::from_millis(900);
 
 /// Inserts the text; with `press_enter`, presses Enter afterwards (sends chat messages).
 pub fn insert(text: &str, mode: InsertMode, press_enter: bool) -> Result<()> {
+    insert_to(text, mode, press_enter, None)
+}
+
+/// Like `insert`; T3 native sends to `t3_target` when given instead of the thread opened last.
+pub fn insert_to(text: &str, mode: InsertMode, press_enter: bool, t3_target: Option<&crate::app::apps::T3Target>) -> Result<()> {
     if text.is_empty() && !press_enter {
         return Ok(());
     }
@@ -29,7 +34,7 @@ pub fn insert(text: &str, mode: InsertMode, press_enter: bool) -> Result<()> {
             InsertMode::Paste => paste(&mut enigo, text, press_enter)?,
             InsertMode::T3 => {
                 // The T3 CLI submits the message itself, so Enter is never pressed for it below.
-                if let Err(e) = crate::app::apps::t3_send(text) {
+                if let Err(e) = crate::app::apps::t3_send(text, t3_target) {
                     crate::app::log::write(&format!("T3 native insert: {e}"));
                     type_text(&mut enigo, text)?;
                 }

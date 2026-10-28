@@ -4,6 +4,9 @@
 //!
 //! The window only exists while dictating; it never takes focus (so pasting
 //! still goes to your app) and clicks pass through it.
+//!
+//! When dictating to T3 Code, a list of recent threads hangs under it: the number keys
+//! pick the one the text goes to. 0 swaps it for a list of projects to start a new thread in.
 
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -32,6 +35,11 @@ const LINE_NEW_Y: f64 = 128.0;
 /// The stop countdown starts this many seconds before the automatic stop.
 pub const COUNTDOWN_SECONDS: f32 = 2.0;
 pub const BARS: usize = 44;
+/// The T3 thread list under the words: its heading, then one row per thread.
+const LIST_HEAD: f64 = 34.0;
+const ROW_HEIGHT: f64 = 34.0;
+const LIST_PAD: f64 = 12.0;
+const ROW_SIZE: f64 = 17.0;
 
 const BACKGROUND: [u8; 3] = [0x18, 0x1A, 0x1E];
 const WAVE: [u8; 3] = [0x1E, 0x9B, 0xFF];
@@ -66,6 +74,11 @@ pub struct Overlay {
     opened: std::time::Instant,
     /// Profile name shown after the status label.
     badge: Option<String>,
+    /// T3 thread (or project) titles to pick from, and the picked one.
+    threads: Vec<String>,
+    chosen: usize,
+    /// The rows are projects to start a new thread in.
+    new_thread: bool,
 }
 
 impl Overlay {
@@ -79,7 +92,7 @@ impl Overlay {
             .with_focused(false)
             .with_focusable(false)
             .with_visible(false)
-            .with_inner_size(LogicalSize::new(WIDTH, HEIGHT));
+            .with_inner_size(LogicalSize::new(WIDTH, height(0)));
         #[cfg(target_os = "windows")]
         {
             use tao::platform::windows::WindowBuilderExtWindows;
@@ -112,6 +125,9 @@ impl Overlay {
             countdown: None,
             opened: std::time::Instant::now(),
             badge: None,
+            threads: Vec::new(),
+            chosen: 0,
+            new_thread: false,
         })
     }
 
@@ -129,6 +145,17 @@ impl Overlay {
     /// Shows the profile name after the status ("LISTENING · CHAT"); `None` hides it.
     pub fn set_badge(&mut self, badge: Option<String>) {
         self.badge = badge;
+    }
+
+    /// Shows the T3 threads under the card, `chosen` highlighted; the card grows to fit them.
+    /// With `new_thread` the rows are projects to start a new thread in.
+    pub fn set_threads(&mut self, threads: Vec<String>, chosen: usize, new_thread: bool) {
+        if threads.len() != self.threads.len() {
+            self.window.set_inner_size(LogicalSize::new(WIDTH, height(threads.len())));
+        }
+        self.threads = threads;
+        self.chosen = chosen;
+        self.new_thread = new_thread;
     }
 
     /// Shows "stopping in n s" with a ring while an automatic stop is near (`None` hides it).
@@ -243,6 +270,10 @@ impl Overlay {
             }
         }
 
+        if !self.threads.is_empty() {
+            self.draw_threads(&mut canvas, phase, scale, x0, x1);
+        }
+
         // Countdown bar along the bottom edge: drains towards the left.
         if let Some(left) = self.countdown {
             let fraction = (left / COUNTDOWN_SECONDS).clamp(0.0, 1.0) as f64;
@@ -260,6 +291,54 @@ impl Overlay {
         if let Err(e) = buffer.present() {
             crate::app::log::write(&format!("pill present: {e}"));
         }
+    }
+}
+
+impl Overlay {
+    /// The thread list under the words: "SEND TO" and a row per thread with its number key.
+    fn draw_threads(&self, canvas: &mut Canvas, phase: Phase, scale: f64, x0: f64, x1: f64) {
+        let top = HEIGHT * scale;
+        canvas.round_rect(x0, top, x1 - x0, scale.max(1.0), 0.0, RULE);
+        let n = self.threads.len();
+        let head = match (phase, self.new_thread) {
+            (Phase::Listening, false) => format!("SEND TO · 1–{n} THREAD · 0 NEW THREAD"),
+            (Phase::Listening, true) => format!("NEW THREAD IN · 1–{n} PROJECT · 0 BACK"),
+            (Phase::Done, false) => "SENT TO".to_string(),
+            (Phase::Done, true) => "STARTED A NEW THREAD IN".to_string(),
+            (_, false) => "SENDING TO".to_string(),
+            (_, true) => "STARTING A NEW THREAD IN".to_string(),
+        };
+        canvas.text(&self.label_font, &head, x0, x1, top + LIST_HEAD / 2.0 * scale + 2.0 * scale, LABEL_SIZE * scale, 2.0 * scale, LABEL);
+        for (i, title) in self.threads.iter().enumerate() {
+            let cy = top + (LIST_HEAD + ROW_HEIGHT * (i as f64 + 0.5)) * scale;
+            let chosen = i == self.chosen;
+            if chosen {
+                let h = (ROW_HEIGHT - 4.0) * scale;
+                canvas.round_rect(x0 - 10.0 * scale, cy - h / 2.0, x1 - x0 + 20.0 * scale, h, 8.0 * scale, BACKGROUND_PILL);
+            }
+            // The number key in a small square, blue when it's the chosen thread.
+            let k = 22.0 * scale;
+            canvas.round_rect(x0, cy - k / 2.0, k, k, 5.0 * scale, if chosen { WAVE } else { RULE });
+            let number = (i + 1).to_string();
+            let nx = x0 + (k - canvas.measure(&self.label_font, &number, LABEL_SIZE * scale, 0.0)) / 2.0;
+            canvas.text(&self.label_font, &number, nx, x0 + k, cy, LABEL_SIZE * scale, 0.0, TEXT);
+            let title = match title.trim() {
+                "" if self.new_thread => "Untitled project",
+                "" => "Untitled thread",
+                _ => title.as_str(),
+            };
+            let font = if chosen { &self.label_font } else { &self.font };
+            canvas.text(font, title, x0 + k + 14.0 * scale, x1, cy, ROW_SIZE * scale, 0.0, if chosen { TEXT } else { TEXT_OLD });
+        }
+    }
+}
+
+/// Window height with `threads` rows of T3 threads under the card.
+fn height(threads: usize) -> f64 {
+    if threads == 0 {
+        HEIGHT
+    } else {
+        HEIGHT + LIST_HEAD + ROW_HEIGHT * threads as f64 + LIST_PAD
     }
 }
 

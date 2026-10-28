@@ -58,17 +58,86 @@ pub fn new_chat_message(text: &str) -> Option<&str> {
     })
 }
 
-/// The thread the user opened last, from T3's state database. Read-only, not immutable,
-/// so visits still sitting in the WAL file are seen too.
-#[cfg(windows)]
-fn last_opened_thread(home: &std::path::Path) -> anyhow::Result<(String, String)> {
-    use rusqlite::{Connection, OpenFlags};
-    use std::time::Duration;
+/// A T3 Code thread the dictation can go to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct T3Thread {
+    pub id: String,
+    pub project: String,
+    pub title: String,
+}
 
+/// A T3 Code project a new thread can start in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct T3Project {
+    pub id: String,
+    pub title: String,
+}
+
+/// Where a dictation to T3 goes: an existing thread, or a new thread in a project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum T3Target {
+    Thread(T3Thread),
+    NewThread(T3Project),
+}
+
+/// How many recent threads (and projects) the card offers, picked with the number keys 1 to this.
+pub const RECENT_THREADS: usize = 6;
+
+/// T3's state database, read-only, not immutable, so visits still sitting in the WAL file are seen too.
+#[cfg(windows)]
+fn open_state(home: &std::path::Path) -> anyhow::Result<rusqlite::Connection> {
+    use rusqlite::{Connection, OpenFlags};
     let db = home.join("userdata").join("statev2.sqlite");
     let conn = Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-    conn.busy_timeout(Duration::from_secs(2))?;
-    last_opened_thread_in(&conn)
+    conn.busy_timeout(std::time::Duration::from_secs(2))?;
+    Ok(conn)
+}
+
+/// The threads and the projects the user opened most recently, newest first: the first thread
+/// is where a dictation goes by default. Empty when T3 Code or its database isn't there.
+#[cfg(windows)]
+pub fn recent() -> (Vec<T3Thread>, Vec<T3Project>) {
+    let result = t3_home().ok_or_else(|| anyhow::anyhow!("T3 Code folder not found")).and_then(|home| {
+        let conn = open_state(&home)?;
+        Ok((recent_threads_in(&conn, RECENT_THREADS)?, recent_projects_in(&conn, RECENT_THREADS)?))
+    });
+    result.unwrap_or_else(|e: anyhow::Error| {
+        crate::app::log::write(&format!("T3 recent threads: {e:#}"));
+        (Vec::new(), Vec::new())
+    })
+}
+
+#[cfg(not(windows))]
+pub fn recent() -> (Vec<T3Thread>, Vec<T3Project>) {
+    (Vec::new(), Vec::new())
+}
+
+/// Projects ordered by when the user last opened one of their threads; deleted ones are left out.
+#[cfg(windows)]
+fn recent_projects_in(conn: &rusqlite::Connection, limit: usize) -> anyhow::Result<Vec<T3Project>> {
+    let mut query = conn.prepare(
+        "SELECT t.project_id, COALESCE(p.title, ''), MAX(json_extract(e.payload_json, '$.opens.openedAt')) AS opened
+         FROM orchestration_events e JOIN orchestration_v2_projection_threads t ON t.thread_id = e.stream_id
+         JOIN projection_projects p ON p.project_id = t.project_id
+         WHERE e.event_type = 'thread.visited' AND p.deleted_at IS NULL
+         GROUP BY t.project_id HAVING opened IS NOT NULL ORDER BY opened DESC LIMIT ?1",
+    )?;
+    let rows = query.query_map([limit as i64], |row| Ok(T3Project { id: row.get(0)?, title: row.get(1)? }))?;
+    Ok(rows.flatten().filter(|p| is_project_id(&p.id)).collect())
+}
+
+/// Like `last_opened_thread_in`, ordered by when the user opened each thread, with its title;
+/// archived and deleted threads are left out.
+#[cfg(windows)]
+fn recent_threads_in(conn: &rusqlite::Connection, limit: usize) -> anyhow::Result<Vec<T3Thread>> {
+    let mut query = conn.prepare(
+        "SELECT e.stream_id, t.project_id, COALESCE(t.title, ''), MAX(json_extract(e.payload_json, '$.opens.openedAt')) AS opened
+         FROM orchestration_events e JOIN orchestration_v2_projection_threads t ON t.thread_id = e.stream_id
+         WHERE e.event_type = 'thread.visited' AND t.archived_at IS NULL AND t.deleted_at IS NULL
+         GROUP BY e.stream_id HAVING opened IS NOT NULL ORDER BY opened DESC LIMIT ?1",
+    )?;
+    let rows = query.query_map([limit as i64], |row| Ok(T3Thread { id: row.get(0)?, project: row.get(1)?, title: row.get(2)? }))?;
+    Ok(rows.flatten().filter(|t| is_thread_id(&t.id) && is_project_id(&t.project)).collect())
 }
 
 /// T3 also logs a visit when a thread that is open somewhere gets new agent activity, so the
@@ -93,11 +162,11 @@ fn last_opened_thread_in(conn: &rusqlite::Connection) -> anyhow::Result<(String,
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// Sends the text to the T3 Code thread opened last, through T3's own CLI. The CLI submits it
-/// as that thread's next message. Starting with "new chat" starts a new thread in the same
-/// project instead.
+/// Sends the text to `target`, or else the T3 Code thread opened last, through T3's own CLI.
+/// The CLI submits it as that thread's next message. Starting with "new chat" starts a new
+/// thread in the same project instead.
 #[cfg(windows)]
-pub fn t3_send(text: &str) -> anyhow::Result<()> {
+pub fn t3_send(text: &str, target: Option<&T3Target>) -> anyhow::Result<()> {
     use anyhow::{anyhow, bail};
     use std::io::{Read, Write};
     use std::os::windows::process::CommandExt;
@@ -106,16 +175,27 @@ pub fn t3_send(text: &str) -> anyhow::Result<()> {
     use std::time::{Duration, Instant};
 
     let home = t3_home().ok_or_else(|| anyhow!("T3 Code folder not found"))?;
-    let (thread_id, project_id) = last_opened_thread(&home)?;
+    let (thread_id, project_id) = match target {
+        Some(T3Target::Thread(t)) if is_thread_id(&t.id) && is_project_id(&t.project) => (t.id.clone(), t.project.clone()),
+        Some(T3Target::NewThread(p)) if is_project_id(&p.id) => (String::new(), p.id.clone()),
+        _ => last_opened_thread_in(&open_state(&home)?)?,
+    };
+    // A new thread picked on the card: the whole dictation is its first message.
+    let new_thread = matches!(target, Some(T3Target::NewThread(_)));
     let cli = home.join("bin").join("t3.cmd");
     if !cli.is_file() {
         bail!("T3 CLI not found at {}", cli.display());
     }
+    // Saying "new chat" as well is fine: those words are dropped either way.
     let (args, text) = match new_chat_message(text) {
+        _ if new_thread => (["thread", "start", project_id.as_str(), "-"], new_chat_message(text).unwrap_or(text)),
         Some("") => bail!("\"new chat\" without a message"),
         Some(first) => (["thread", "start", project_id.as_str(), "-"], first),
         None => (["thread", "send", thread_id.as_str(), "-"], text),
     };
+    if text.trim().is_empty() {
+        bail!("no message to send");
+    }
     let mut child = Command::new(&cli)
         .args(args)
         .stdin(Stdio::piped())
@@ -165,7 +245,7 @@ pub fn t3_send(text: &str) -> anyhow::Result<()> {
 
 /// T3 Code only exists on Windows here.
 #[cfg(not(windows))]
-pub fn t3_send(_text: &str) -> anyhow::Result<()> {
+pub fn t3_send(_text: &str, _target: Option<&T3Target>) -> anyhow::Result<()> {
     Err(anyhow::anyhow!("T3 Code is only supported on Windows"))
 }
 
@@ -203,6 +283,37 @@ mod tests {
         )
         .unwrap();
         assert_eq!(last_opened_thread_in(&conn).unwrap(), ("aaaa".to_string(), "mcp:p2".to_string()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn recent_threads_newest_opened_first_without_archived() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE orchestration_events (sequence INTEGER, stream_id TEXT, event_type TEXT, payload_json TEXT);
+             CREATE TABLE orchestration_v2_projection_threads (thread_id TEXT, project_id TEXT, title TEXT, archived_at TEXT, deleted_at TEXT);
+             INSERT INTO orchestration_v2_projection_threads VALUES
+               ('aaaa', 'mcp:p1', 'First', NULL, NULL), ('bbbb', 'mcp:p2', 'Second', NULL, NULL),
+               ('cccc', 'mcp:p1', 'Old', '2026', NULL), ('dddd', 'mcp:p1', 'Never opened', NULL, NULL);
+             INSERT INTO orchestration_events VALUES
+               (1, 'aaaa', 'thread.visited', '{\"opens\":{\"openedAt\":1000}}'),
+               (2, 'bbbb', 'thread.visited', '{\"opens\":{\"openedAt\":2000}}'),
+               (3, 'aaaa', 'thread.visited', '{\"opens\":{\"openedAt\":3000}}'),
+               (4, 'bbbb', 'thread.visited', '{\"opens\":{\"openedAt\":2000}}'),
+               (5, 'cccc', 'thread.visited', '{\"opens\":{\"openedAt\":4000}}'),
+               (6, 'dddd', 'thread.visited', '{\"opens\":null}');",
+        )
+        .unwrap();
+        let titles: Vec<_> = recent_threads_in(&conn, 6).unwrap().into_iter().map(|t| t.title).collect();
+        assert_eq!(titles, ["First", "Second"]);
+        assert_eq!(recent_threads_in(&conn, 1).unwrap().len(), 1);
+        conn.execute_batch(
+            "CREATE TABLE projection_projects (project_id TEXT, title TEXT, deleted_at TEXT);
+             INSERT INTO projection_projects VALUES ('mcp:p1', 'One', NULL), ('mcp:p2', 'Two', NULL);",
+        )
+        .unwrap();
+        let projects: Vec<_> = recent_projects_in(&conn, 6).unwrap().into_iter().map(|p| p.title).collect();
+        assert_eq!(projects, ["One", "Two"]);
     }
 
     #[test]

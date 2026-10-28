@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0 - 2026-10-28
+
+- New: when dictating to T3 Code, the listening card lists the threads you opened most recently, with the one the text will go to highlighted. Press 1–6 (top row or numpad) while talking to send it to a different thread instead. Press 0 to start a new thread: the list switches to your recent projects (the current thread's project is picked), and 1–6 picks another one; 0 again goes back to the threads. The number keys are only taken over while you dictate to T3.
+
 ## 1.4.0 - 2026-10-27
 
 - New: **Dictate to T3 Code**, a new action for an extra shortcut under Settings → Shortcut → More shortcuts. Give it its own key (F6, say) and keep F5 for normal dictation: what you say on that key goes straight to the T3 Code thread you opened last, from whatever program you are in. "New chat" still starts a new chat in the same project, and if T3 Code can't take it the text is typed instead.
