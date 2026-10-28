@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.0 - 2026-10-28
+
+- Fixed: dictating inside T3 Code now picks the thread you are looking at, read from T3's window, instead of the one you opened first. A thread that isn't among the recent ones is added to the top of the card. If T3's window doesn't say which thread it shows, nothing is picked and the card waits for a number key.
+
 ## 1.6.0 - 2026-10-28
 
 - Changed: when dictating to T3 Code from another program, no thread is picked until you press a number key, and nothing is sent until you do. If you're done talking without picking, the card stays open ("Pick a thread") and the text goes to the thread you then pick; after 30 seconds without a pick, or on Escape, it is dropped.

@@ -641,9 +641,29 @@ impl App {
         self.t3_choice = 0;
         self.t3_new = false;
         self.t3_project = 0;
-        // Dictating inside T3 Code: the thread open there (the one opened last, first in the
-        // list) is picked already. From another program nothing is picked until a number key.
-        self.t3_picked = !self.t3_threads.is_empty() && self.target_app.as_deref().is_some_and(apps::is_t3_code_exe);
+        // Dictating inside T3 Code: the thread shown there is picked already (added to the list
+        // when it isn't one of the recent ones). From another program nothing is picked until a
+        // number key, nor when T3's window won't say which thread it shows.
+        self.t3_picked = false;
+        if self.active.insert_mode == InsertMode::T3 && self.target_app.as_deref().is_some_and(apps::is_t3_code_exe) {
+            if let Some(id) = apps::shown_thread() {
+                let index = match self.t3_threads.iter().position(|t| t.id == id) {
+                    Some(i) => Some(i),
+                    None => apps::thread(&id).map(|t| {
+                        self.t3_threads.insert(0, t);
+                        self.t3_threads.truncate(apps::RECENT_THREADS);
+                        0
+                    }),
+                };
+                log::write(&format!("T3 shows thread {id}: {}", if index.is_some() { "picked" } else { "unknown" }));
+                if let Some(i) = index {
+                    self.t3_choice = i;
+                    self.t3_picked = true;
+                }
+            } else {
+                log::write("T3 thread shown: unknown");
+            }
+        }
         self.t3_waiting = None;
         self.active_profile = profiles::matching(&self.settings, self.target_app.as_deref(), forced.as_deref()).map(|p| p.name.clone());
         let model_ready = models::find(&self.active.model_id).is_some_and(|m| m.is_downloaded());

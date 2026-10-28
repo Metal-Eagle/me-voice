@@ -155,6 +155,92 @@ fn recent_threads_in(conn: &rusqlite::Connection, limit: usize) -> anyhow::Resul
     Ok(rows.flatten().filter(|t| is_thread_id(&t.id) && is_project_id(&t.project)).collect())
 }
 
+/// The thread T3 Code's window in front is showing, read from its address
+/// (`t3code://app/#/<environment>/<thread>`) through UI Automation. `None` when the window in
+/// front isn't T3 Code, it shows no thread, or Windows won't tell.
+#[cfg(windows)]
+pub fn shown_thread() -> Option<String> {
+    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+    unsafe {
+        // Only uninitialise if this call did the initialising (S_OK or S_FALSE both count as success).
+        let initialised = CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_ok();
+        // Chromium builds its accessibility tree only once asked, so the first read can be empty.
+        let read = || std::panic::catch_unwind(|| read_shown_url()).ok().flatten();
+        let url = read().or_else(|| {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            read()
+        });
+        if initialised {
+            CoUninitialize();
+        }
+        let id = thread_in_url(&url?)?;
+        is_thread_id(&id).then_some(id)
+    }
+}
+
+#[cfg(not(windows))]
+pub fn shown_thread() -> Option<String> {
+    None
+}
+
+/// The address of the page in the window in front: the value of its document element.
+/// Must run on a COM-initialised thread.
+#[cfg(windows)]
+unsafe fn read_shown_url() -> Option<String> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, IUIAutomationValuePattern, TreeScope_Descendants, UIA_ControlTypePropertyId,
+        UIA_DocumentControlTypeId, UIA_ValuePatternId,
+    };
+    unsafe {
+        let hwnd = windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow();
+        if hwnd.is_null() {
+            return None;
+        }
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None::<&windows::core::IUnknown>, CLSCTX_INPROC_SERVER).ok()?;
+        let window = automation.ElementFromHandle(HWND(hwnd)).ok()?;
+        let condition = automation
+            .CreatePropertyCondition(UIA_ControlTypePropertyId, &windows::Win32::System::Variant::VARIANT::from(UIA_DocumentControlTypeId.0))
+            .ok()?;
+        let document = window.FindFirst(TreeScope_Descendants, &condition).ok()?;
+        let pattern = document.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId).ok()?;
+        Some(pattern.CurrentValue().ok()?.to_string())
+    }
+}
+
+/// The thread id in a T3 Code address: the last part of the `#/…` route, `%3A` decoded.
+#[cfg(any(windows, test))]
+fn thread_in_url(url: &str) -> Option<String> {
+    let route = url.split_once("#/")?.1;
+    let route = route.split(['?', '#']).next()?;
+    let mut parts = route.split('/').filter(|p| !p.is_empty());
+    let (_environment, thread) = (parts.next()?, parts.next()?);
+    Some(thread.replace("%3A", ":").replace("%3a", ":"))
+}
+
+/// One thread, by id, as on the card; `None` when it is unknown, archived or deleted.
+#[cfg(windows)]
+pub fn thread(id: &str) -> Option<T3Thread> {
+    let home = t3_home()?;
+    let conn = open_state(&home).ok()?;
+    conn.query_row(
+        "SELECT t.thread_id, t.project_id, COALESCE(p.title, ''), COALESCE(t.title, '')
+         FROM orchestration_v2_projection_threads t JOIN projection_projects p ON p.project_id = t.project_id
+         WHERE t.thread_id = ?1 AND t.archived_at IS NULL AND t.deleted_at IS NULL AND p.deleted_at IS NULL",
+        [id],
+        |row| Ok(T3Thread { id: row.get(0)?, project: row.get(1)?, project_title: row.get(2)?, title: row.get(3)? }),
+    )
+    .ok()
+    .filter(|t| is_thread_id(&t.id) && is_project_id(&t.project))
+}
+
+#[cfg(not(windows))]
+pub fn thread(_id: &str) -> Option<T3Thread> {
+    None
+}
+
 /// T3 also logs a visit when a thread that is open somewhere gets new agent activity, so the
 /// newest visit can be a busy background thread. `opens.openedAt` is set only when the user
 /// opens a thread, and those visits copy it, so the newest `openedAt` is the one they opened.
@@ -280,6 +366,18 @@ mod tests {
         assert!(!is_t3_code_exe("t3code-server.exe"));
         assert!(!is_t3_code_exe("ms-teams.exe"));
         assert!(!is_t3_code_exe("t3 code (beta)"));
+    }
+
+    #[test]
+    fn thread_in_url_reads_the_route() {
+        assert_eq!(
+            thread_in_url("t3code://app/#/1f1e7a65-23a6/f27ddbec-791a").as_deref(),
+            Some("f27ddbec-791a")
+        );
+        assert_eq!(thread_in_url("t3code://app/#/env/mcp%3Ac022-b7").as_deref(), Some("mcp:c022-b7"));
+        assert_eq!(thread_in_url("t3code://app/#/env/abc?tab=diff").as_deref(), Some("abc"));
+        assert_eq!(thread_in_url("t3code://app/#/env"), None);
+        assert_eq!(thread_in_url("t3code://app/"), None);
     }
 
     /// Reproduces the wrong-thread bug: background activity on B after the user opened A.
