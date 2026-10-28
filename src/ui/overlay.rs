@@ -60,6 +60,8 @@ pub enum Phase {
     Transcribing,
     /// The AI is cleaning up the text; `true` when it goes to Claude (the cloud).
     Polishing(bool),
+    /// The text is done and waits for a T3 thread to be picked; seconds left before it is dropped.
+    Choosing(u32),
     Done,
 }
 
@@ -76,7 +78,7 @@ pub struct Overlay {
     badge: Option<String>,
     /// T3 thread (or project) titles to pick from, and the picked one.
     threads: Vec<String>,
-    chosen: usize,
+    chosen: Option<usize>,
     /// The rows are projects to start a new thread in.
     new_thread: bool,
 }
@@ -126,7 +128,7 @@ impl Overlay {
             opened: std::time::Instant::now(),
             badge: None,
             threads: Vec::new(),
-            chosen: 0,
+            chosen: None,
             new_thread: false,
         })
     }
@@ -147,9 +149,9 @@ impl Overlay {
         self.badge = badge;
     }
 
-    /// Shows the T3 threads under the card, `chosen` highlighted; the card grows to fit them.
+    /// Shows the T3 threads under the card, `chosen` (if any) highlighted; the card grows to fit them.
     /// With `new_thread` the rows are projects to start a new thread in.
-    pub fn set_threads(&mut self, threads: Vec<String>, chosen: usize, new_thread: bool) {
+    pub fn set_threads(&mut self, threads: Vec<String>, chosen: Option<usize>, new_thread: bool) {
         if threads.len() != self.threads.len() {
             self.window.set_inner_size(LogicalSize::new(WIDTH, height(threads.len())));
         }
@@ -196,6 +198,7 @@ impl Overlay {
             (Phase::Transcribing, _) => (YELLOW, "TRANSCRIBING".to_string()),
             (Phase::Polishing(false), _) => (YELLOW, "POLISHING".to_string()),
             (Phase::Polishing(true), _) => (YELLOW, "POLISHING · CLAUDE".to_string()),
+            (Phase::Choosing(left), _) => (YELLOW, format!("PICK A THREAD · DROPPED IN {left} S")),
             (Phase::Done, _) => (GREEN, "PASTED".to_string()),
         };
         let blink = if phase == Phase::Listening {
@@ -301,8 +304,8 @@ impl Overlay {
         canvas.round_rect(x0, top, x1 - x0, scale.max(1.0), 0.0, RULE);
         let n = self.threads.len();
         let head = match (phase, self.new_thread) {
-            (Phase::Listening, false) => format!("SEND TO · 1–{n} THREAD · 0 NEW THREAD"),
-            (Phase::Listening, true) => format!("NEW THREAD IN · 1–{n} PROJECT · 0 BACK"),
+            (Phase::Listening | Phase::Choosing(_), false) => format!("SEND TO · 1–{n} THREAD · 0 NEW THREAD"),
+            (Phase::Listening | Phase::Choosing(_), true) => format!("NEW THREAD IN · 1–{n} PROJECT · 0 BACK"),
             (Phase::Done, false) => "SENT TO".to_string(),
             (Phase::Done, true) => "STARTED A NEW THREAD IN".to_string(),
             (_, false) => "SENDING TO".to_string(),
@@ -311,7 +314,7 @@ impl Overlay {
         canvas.text(&self.label_font, &head, x0, x1, top + LIST_HEAD / 2.0 * scale + 2.0 * scale, LABEL_SIZE * scale, 2.0 * scale, LABEL);
         for (i, title) in self.threads.iter().enumerate() {
             let cy = top + (LIST_HEAD + ROW_HEIGHT * (i as f64 + 0.5)) * scale;
-            let chosen = i == self.chosen;
+            let chosen = Some(i) == self.chosen;
             if chosen {
                 let h = (ROW_HEIGHT - 4.0) * scale;
                 canvas.round_rect(x0 - 10.0 * scale, cy - h / 2.0, x1 - x0 + 20.0 * scale, h, 8.0 * scale, BACKGROUND_PILL);

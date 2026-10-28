@@ -52,6 +52,8 @@ const PARTIAL_EVERY_SECONDS: f32 = 0.3;
 const PARTIAL_WINDOW_SECONDS: usize = 10;
 /// How long the final text stays in the pill after pasting.
 const SHOW_RESULT: Duration = Duration::from_millis(1800);
+/// How long a finished T3 dictation waits for a thread to be picked before it is dropped.
+const T3_PICK_TIMEOUT: Duration = Duration::from_secs(30);
 /// First automatic update check after start, then every `UPDATE_EVERY`.
 const UPDATE_FIRST: Duration = Duration::from_secs(60);
 const UPDATE_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
@@ -141,6 +143,10 @@ struct App {
     /// 0 was pressed: the text starts a new thread in `t3_projects[t3_project]`.
     t3_new: bool,
     t3_project: usize,
+    /// A number key was pressed this dictation; until then nothing is chosen and nothing is sent.
+    t3_picked: bool,
+    /// The text, done but not yet sent: waits for a number key until the deadline, then is dropped.
+    t3_waiting: Option<(String, Instant)>,
     /// Number keys registered while dictating to T3, by hotkey id, with their number.
     digit_keys: HashMap<u32, (HotKey, usize)>,
     /// Screen context read when the dictation started, arriving from a background thread.
@@ -296,6 +302,7 @@ pub fn run() -> Result<()> {
             return;
         }
         app.check_auto_stop();
+        app.check_t3_timeout();
         app.update_overlay(target);
         if matches!(app.state, State::Idle) && app.hotkeys_dirty && !app.hotkey_paused {
             app.register_hotkey();
@@ -344,6 +351,8 @@ impl App {
             t3_projects: Vec::new(),
             t3_new: false,
             t3_project: 0,
+            t3_picked: false,
+            t3_waiting: None,
             digit_keys: HashMap::new(),
             context: None,
             polishing: false,
@@ -466,8 +475,39 @@ impl App {
             }
         } else if self.t3_new && n <= self.t3_projects.len() {
             self.t3_project = n - 1;
+            self.t3_picked = true;
         } else if !self.t3_new && n <= self.t3_threads.len() {
             self.t3_choice = n - 1;
+            self.t3_picked = true;
+        }
+        if self.t3_picked {
+            if let Some((text, _)) = self.t3_waiting.take() {
+                log::write("T3 thread picked: sending");
+                let target = self.t3_target();
+                self.end_t3_choice();
+                self.show_result_until = Some(Instant::now() + SHOW_RESULT);
+                send_text(text, InsertMode::T3, false, target);
+            }
+        }
+    }
+
+    /// Whether the card offers threads to pick, so a finished dictation waits for a pick.
+    fn t3_offers_choice(&self) -> bool {
+        self.active.insert_mode == InsertMode::T3 && !(self.t3_threads.is_empty() && self.t3_projects.is_empty())
+    }
+
+    /// Done with picking: the number and Escape keys go back, and waiting text is dropped.
+    fn end_t3_choice(&mut self) {
+        self.t3_waiting = None;
+        self.set_cancel_key(false);
+        self.set_digit_keys(false);
+    }
+
+    /// Drops a finished T3 dictation nobody picked a thread for in time. Runs on the frame tick.
+    fn check_t3_timeout(&mut self) {
+        if self.t3_waiting.as_ref().is_some_and(|(_, deadline)| Instant::now() >= *deadline) {
+            log::write("no T3 thread picked: dropped the dictation");
+            self.end_t3_choice();
         }
     }
 
@@ -601,6 +641,10 @@ impl App {
         self.t3_choice = 0;
         self.t3_new = false;
         self.t3_project = 0;
+        // Dictating inside T3 Code: the thread open there (the one opened last, first in the
+        // list) is picked already. From another program nothing is picked until a number key.
+        self.t3_picked = !self.t3_threads.is_empty() && self.target_app.as_deref().is_some_and(apps::is_t3_code_exe);
+        self.t3_waiting = None;
         self.active_profile = profiles::matching(&self.settings, self.target_app.as_deref(), forced.as_deref()).map(|p| p.name.clone());
         let model_ready = models::find(&self.active.model_id).is_some_and(|m| m.is_downloaded());
         if !model_ready {
@@ -638,8 +682,7 @@ impl App {
         if let State::Recording { rec, .. } = std::mem::replace(&mut self.state, State::Idle) {
             drop(rec.stop());
         }
-        self.set_cancel_key(false);
-        self.set_digit_keys(false);
+        self.end_t3_choice();
         self.tray.set_status(Status::Idle);
     }
 
@@ -647,8 +690,10 @@ impl App {
         let State::Recording { rec, .. } = std::mem::replace(&mut self.state, State::Transcribing) else {
             return;
         };
-        self.set_cancel_key(false);
-        self.set_digit_keys(false);
+        if !self.t3_offers_choice() {
+            // For T3 the keys stay: a thread can still be picked (or Escape pressed) once the text is done.
+            self.end_t3_choice();
+        }
         self.partial_abort.store(true, std::sync::atomic::Ordering::Relaxed);
         log::write(&format!("live preview updated {} times", self.partial_count));
         let samples = rec.stop();
@@ -664,6 +709,7 @@ impl App {
         }
         if samples.len() < SAMPLE_RATE * MIN_CLIP.as_millis() as usize / 1000 {
             self.warm = None;
+            self.end_t3_choice();
             self.state = State::Idle;
             self.tray.set_status(Status::Idle);
             return;
@@ -726,25 +772,21 @@ impl App {
                     self.tray.set_last(&text);
                 }
                 self.live_text = text.clone();
-                self.show_result_until = Some(Instant::now() + SHOW_RESULT);
                 log::write(&format!("transcribed {} characters", text.chars().count()));
-                // On its own thread: pasting waits for keys to be released and for the
-                // target app, and the event loop (the card) must keep running meanwhile.
-                // ME_VOICE_NO_INSERT=1: don't paste (stress tests must not type into other windows).
-                let skip_insert = std::env::var("ME_VOICE_NO_INSERT").as_deref() == Ok("1");
-                let mode = self.active.insert_mode;
-                let paste_text = text.clone();
-                let t3_target = self.t3_target();
-                std::thread::spawn(move || {
-                    if skip_insert {
-                        return;
-                    }
-                    if let Err(e) = insert::insert_to(&paste_text, mode, press_enter, t3_target.as_ref()) {
-                        log::write(&e.to_string());
-                    }
-                });
+                if self.t3_offers_choice() && !self.t3_picked && !text.is_empty() {
+                    // No thread picked yet: nothing is sent until one is, or it is dropped.
+                    log::write("waiting for a T3 thread to be picked");
+                    self.t3_waiting = Some((text, Instant::now() + T3_PICK_TIMEOUT));
+                } else {
+                    self.end_t3_choice();
+                    self.show_result_until = Some(Instant::now() + SHOW_RESULT);
+                    send_text(text, self.active.insert_mode, press_enter, self.t3_target());
+                }
             }
-            Err(e) => log::write(&e.to_string()),
+            Err(e) => {
+                self.end_t3_choice();
+                log::write(&e.to_string());
+            }
         }
         if self.settings.unload_after_minutes == 0 {
             self.transcriber.lock().unwrap().unload();
@@ -808,6 +850,10 @@ impl App {
                 (Phase::Polishing(self.active.ai_provider == AiProvider::ClaudeCli), vec![0.0; overlay::BARS])
             }
             State::Transcribing => (Phase::Transcribing, vec![0.0; overlay::BARS]),
+            State::Idle if self.t3_waiting.is_some() => {
+                let left = self.t3_waiting.as_ref().map_or(0, |(_, d)| d.saturating_duration_since(Instant::now()).as_secs_f32().ceil() as u32);
+                (Phase::Choosing(left), vec![0.0; overlay::BARS])
+            }
             State::Idle if showing_result => (Phase::Done, vec![0.0; overlay::BARS]),
             State::Idle => {
                 self.overlay = None;
@@ -822,10 +868,11 @@ impl App {
         if let Some(o) = self.overlay.as_mut() {
             o.set_badge(badge);
             o.set_countdown(self.countdown);
+            // Nothing is highlighted until a number key is pressed.
             if self.t3_new {
-                o.set_threads(self.t3_projects.iter().map(|p| p.title.clone()).collect(), self.t3_project, true);
+                o.set_threads(self.t3_projects.iter().map(|p| p.title.clone()).collect(), self.t3_picked.then_some(self.t3_project), true);
             } else {
-                o.set_threads(self.t3_threads.iter().map(apps::T3Thread::label).collect(), self.t3_choice, false);
+                o.set_threads(self.t3_threads.iter().map(apps::T3Thread::label).collect(), self.t3_picked.then_some(self.t3_choice), false);
             }
             o.update(phase, levels, &self.live_text);
         }
@@ -917,7 +964,7 @@ impl App {
     }
 
     fn next_wake(&self) -> ControlFlow {
-        if matches!(self.state, State::Recording { .. } | State::Transcribing) {
+        if matches!(self.state, State::Recording { .. } | State::Transcribing) || self.t3_waiting.is_some() {
             return ControlFlow::WaitUntil(Instant::now() + FRAME);
         }
         if let Some(until) = self.show_result_until {
@@ -1120,4 +1167,18 @@ mod tests {
             assert_eq!(decide(mode, Stage::Busy, HotKeyState::Released, THRESHOLD), Step::Nothing);
         }
     }
+}
+
+/// Inserts the text on its own thread: pasting waits for keys to be released and for the
+/// target app, and the event loop (the card) must keep running meanwhile.
+/// ME_VOICE_NO_INSERT=1: don't paste (stress tests must not type into other windows).
+fn send_text(text: String, mode: InsertMode, press_enter: bool, t3_target: Option<apps::T3Target>) {
+    if std::env::var("ME_VOICE_NO_INSERT").as_deref() == Ok("1") {
+        return;
+    }
+    std::thread::spawn(move || {
+        if let Err(e) = insert::insert_to(&text, mode, press_enter, t3_target.as_ref()) {
+            log::write(&e.to_string());
+        }
+    });
 }

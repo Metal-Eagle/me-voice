@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.0 - 2026-10-28
+
+- Changed: when dictating to T3 Code from another program, no thread is picked until you press a number key, and nothing is sent until you do. If you're done talking without picking, the card stays open ("Pick a thread") and the text goes to the thread you then pick; after 30 seconds without a pick, or on Escape, it is dropped.
+- New: dictating inside T3 Code picks the thread open there right away, so the text is sent to it as before. 1–6 or 0 still send it elsewhere.
+
 ## 1.5.1 - 2026-10-28
 
 - Fixed: threads started through T3 Code's own tools (their id starts with `mcp:`) were missing from the thread list on the listening card, so it didn't match T3. Threads in deleted projects are left out too.
