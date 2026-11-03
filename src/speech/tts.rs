@@ -349,19 +349,54 @@ pub fn announce(line: Line, v: &crate::settings::VoiceSettings) -> bool {
 /// Speaks any text on a background thread (Test voice, ▶ buttons, announcements). Plays the
 /// stop beep instead if Kokoro fails.
 pub fn say(text: String, v: crate::settings::VoiceSettings) {
+    say_then(text, v, || {});
+}
+
+/// Like `say`, then calls `done` when the line has played (or was stopped / failed).
+pub fn say_then(text: String, v: crate::settings::VoiceSettings, done: impl FnOnce() + Send + 'static) {
     std::thread::spawn(move || {
         if let Err(e) = speak_blocking(&text, &v) {
             crate::app::log::write(&format!("voice: {e:#}"));
             crate::speech::sound::play(crate::speech::sound::Beep::Stop);
         }
+        done();
     });
 }
+
+/// Says `text` for `line` if that moment is switched on; `done` runs after it played.
+/// Returns false (and doesn't call `done`) when it's off.
+pub fn announce_text(line: Line, text: String, v: &crate::settings::VoiceSettings, done: impl FnOnce() + Send + 'static) -> bool {
+    if !line.enabled(v) || !installed() {
+        return false;
+    }
+    say_then(text, v.clone(), done);
+    true
+}
+
+/// Cuts off the line being spoken now.
+pub fn stop() {
+    crate::speech::sound::STOP_SPEECH.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether a line is being spoken right now.
+pub fn is_speaking() -> bool {
+    SPEAKING.try_lock().is_err()
+}
+
+/// The last line spoken, for "repeat".
+pub fn last_spoken() -> Option<String> {
+    LAST_SPOKEN.lock().unwrap().clone()
+}
+
+static LAST_SPOKEN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// Renders (cached) and plays `text` with the voice, speed and volume from the settings.
 pub fn speak_blocking(text: &str, v: &crate::settings::VoiceSettings) -> Result<()> {
     let samples = rendered(text, v)?;
     // One line at a time: a later line waits for the one playing instead of talking over it.
     let _speaking = SPEAKING.lock().unwrap_or_else(|e| e.into_inner());
+    crate::speech::sound::STOP_SPEECH.store(false, std::sync::atomic::Ordering::Relaxed);
+    *LAST_SPOKEN.lock().unwrap() = Some(text.to_string());
     // 70 % (the default) is the model's own level.
     let gain = v.volume.clamp(0.0, 1.0) / 0.7;
     let scaled: Vec<f32> = samples.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect();

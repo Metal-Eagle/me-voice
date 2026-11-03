@@ -8,3 +8,4 @@ pub mod history;
 pub mod insert;
 pub mod polish;
 pub mod profiles;
+pub mod speakable;

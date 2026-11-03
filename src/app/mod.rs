@@ -10,6 +10,7 @@ pub mod ipc;
 pub mod log;
 pub mod login;
 pub mod power;
+pub mod t3_watch;
 pub mod tray;
 pub mod update;
 
@@ -69,6 +70,10 @@ enum UserEvent {
     /// Live (partial) transcription while still recording.
     Partial { recording: u64, text: String },
     Update(UpdateResult),
+    /// A watched T3 thread changed (working, finished, question...).
+    Watch(t3_watch::WatchEvent),
+    /// A line that expects an answer has been spoken: listen for the reply to this thread.
+    ListenForReply(String),
 }
 
 /// Result of an update check from the worker thread.
@@ -89,6 +94,10 @@ enum State {
 }
 
 struct App {
+    /// Set while the recording is a spoken reply to this T3 thread (not pasted anywhere).
+    reply_to: Option<String>,
+    /// The answer being read out with "read it" / "more": thread, pieces, next piece.
+    reading: Option<(String, Vec<String>, usize)>,
     settings: Settings,
     hotkeys: GlobalHotKeyManager,
     dictation: Option<HotKey>,
@@ -275,6 +284,8 @@ pub fn run() -> Result<()> {
             Event::UserEvent(UserEvent::Transcribed(result)) => app.on_transcribed(result),
             Event::UserEvent(UserEvent::Polishing) => app.polishing = true,
             Event::UserEvent(UserEvent::Update(result)) => app.on_update(result),
+            Event::UserEvent(UserEvent::Watch(event)) => app.on_watch(event),
+            Event::UserEvent(UserEvent::ListenForReply(thread)) => app.listen_for_reply(thread),
             Event::UserEvent(UserEvent::Partial { recording, text }) => app.on_partial(recording, text),
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => app.unload_if_idle(),
             Event::RedrawRequested(id) => {
@@ -318,7 +329,17 @@ impl App {
         // Load the voice in the background now, so the first spoken line doesn't wait for it.
         let voice = settings.voice.clone();
         std::thread::spawn(move || crate::speech::tts::warm_up(&voice));
+        STILL_EVERY.store(settings.voice.say_still_working_minutes, std::sync::atomic::Ordering::Relaxed);
+        let watch_proxy = proxy.clone();
+        t3_watch::start(
+            move |event| {
+                let _ = watch_proxy.send_event(UserEvent::Watch(event));
+            },
+            || STILL_EVERY.load(std::sync::atomic::Ordering::Relaxed),
+        );
         let mut app = Self {
+            reply_to: None,
+            reading: None,
             active: settings.clone(),
             settings,
             hotkeys: GlobalHotKeyManager::new().map_err(|e| anyhow!("shortcuts: {e}"))?,
@@ -540,6 +561,10 @@ impl App {
         if self.hotkey_paused {
             return;
         }
+        // Pressing a shortcut while it talks cuts the voice off (and starts listening as usual).
+        if e.state == HotKeyState::Pressed && self.settings.voice.interrupt_by_talking && crate::speech::tts::is_speaking() {
+            crate::speech::tts::stop();
+        }
         let is_main = self.dictation.is_some_and(|d| d.id() == e.id);
         // Profile for an extra dictation shortcut; `None` for the main shortcut.
         let mut profile = None;
@@ -580,6 +605,7 @@ impl App {
                 self.started_by = Some(e.id);
                 self.command_mode = command;
                 self.force_t3 = to_t3;
+                self.reply_to = None;
                 self.start_recording(self.settings.hotkey_mode == HotkeyMode::TapOnly);
             }
             Step::Stop => self.stop_recording(),
@@ -610,6 +636,7 @@ impl App {
                 self.settings = Settings::load();
                 self.hotkeys_dirty = true;
                 let voice = self.settings.voice.clone();
+                STILL_EVERY.store(voice.say_still_working_minutes, std::sync::atomic::Ordering::Relaxed);
                 std::thread::spawn(move || crate::speech::tts::warm_up(&voice));
                 if self.settings.model_id != old_model && matches!(self.state, State::Idle) {
                     self.transcriber.lock().unwrap().unload();
@@ -705,6 +732,7 @@ impl App {
     }
 
     fn cancel_recording(&mut self) {
+        self.reply_to = None;
         self.warm = None;
         self.partial_abort.store(true, std::sync::atomic::Ordering::Relaxed);
         if let State::Recording { rec, .. } = std::mem::replace(&mut self.state, State::Idle) {
@@ -740,6 +768,9 @@ impl App {
             }
         }
         if samples.len() < SAMPLE_RATE * MIN_CLIP.as_millis() as usize / 1000 {
+            if self.reply_to.take().is_some() {
+                log::write("reply: nothing said");
+            }
             self.warm = None;
             self.end_t3_choice();
             self.state = State::Idle;
@@ -772,6 +803,14 @@ impl App {
         self.state = State::Idle;
         self.polishing = false;
         self.tray.set_status(Status::Idle);
+        if let Some(thread) = self.reply_to.take() {
+            self.end_t3_choice();
+            match result {
+                Ok(Dictation { text, .. }) => self.on_reply(thread, text),
+                Err(e) => log::write(&format!("reply: {e}")),
+            }
+            return;
+        }
         match result {
             Ok(Dictation { text, command }) => {
                 // A stop/send word at the end is a command, not part of the text.
@@ -822,6 +861,138 @@ impl App {
         }
         if self.settings.unload_after_minutes == 0 {
             self.transcriber.lock().unwrap().unload();
+        }
+    }
+
+    /// Speaks what a watched T3 thread is doing. Finished, questions and OK requests then
+    /// listen for your answer (when that's switched on).
+    fn on_watch(&mut self, event: t3_watch::WatchEvent) {
+        use crate::speech::tts::{fill, Line};
+        use t3_watch::WatchEvent::*;
+        let v = self.settings.voice.clone();
+        let a = |t: &str| fill(t, &v.address);
+        let (line, text, listen_to) = match &event {
+            Working(t) => (Line::Working, a(&format!("{}: working on it.", t.name)), None),
+            StillWorking(list) => {
+                let names: Vec<&str> = list.iter().map(|t| t.name.as_str()).collect();
+                let text = match names.as_slice() {
+                    [] => return,
+                    [one] => a(&format!("{one}: still working{{a}}.")),
+                    [rest @ .., last] if names.len() <= 3 => format!("{} threads still working: {} and {last}.", names.len(), rest.join(", ")),
+                    _ => format!("{} threads still working. Say status for the list.", names.len()),
+                };
+                (Line::StillWorking, text, None)
+            }
+            NeedsOk(t) => (Line::NeedsOk, format!("{} needs your OK. Please approve it in T3 Code.", t.name), None),
+            Question(t, q) => (Line::Question, format!("{} asks: {}", t.name, crate::text::speakable::speakable(q)), Some(t.id.clone())),
+            Finished(t) => (Line::Finished, a(&format!("{} is finished{{a}}. Shall I read you the answer?", t.name)), Some(t.id.clone())),
+            Failed(t) => (Line::Error, format!("{} ran into an error.", t.name), None),
+        };
+        log::write(&format!("T3 watch: {event:?}"));
+        self.speak_and_listen(line, text, listen_to);
+    }
+
+    /// Says a line; with `listen_to` set it then listens for a reply to that thread.
+    fn speak_and_listen(&self, line: crate::speech::tts::Line, text: String, listen_to: Option<String>) {
+        let v = &self.settings.voice;
+        let proxy = self.proxy.clone();
+        let listen = listen_to.filter(|_| v.listen_after_speaking);
+        crate::speech::tts::announce_text(line, text, v, move || {
+            if let Some(thread) = listen {
+                let _ = proxy.send_event(UserEvent::ListenForReply(thread));
+            }
+        });
+    }
+
+    /// Says free text (answers to "read it", "status"...) and listens again afterwards.
+    fn reply_and_listen(&self, text: String, thread: &str) {
+        let v = self.settings.voice.clone();
+        if !v.talk_back || !crate::speech::tts::installed() {
+            return;
+        }
+        let proxy = self.proxy.clone();
+        let listen = v.listen_after_speaking.then(|| thread.to_string());
+        crate::speech::tts::say_then(text, v, move || {
+            if let Some(thread) = listen {
+                let _ = proxy.send_event(UserEvent::ListenForReply(thread));
+            }
+        });
+    }
+
+    /// Starts a short recording for a spoken reply, unless you're already dictating.
+    fn listen_for_reply(&mut self, thread: String) {
+        if !matches!(self.state, State::Idle) || self.t3_waiting.is_some() {
+            return;
+        }
+        log::write("reply: listening");
+        self.forced_profile = None;
+        self.command_mode = false;
+        self.force_t3 = false;
+        self.started_by = self.dictation.map(|d| d.id());
+        self.reply_to = Some(thread);
+        self.start_recording(true);
+        if !matches!(self.state, State::Recording { .. }) {
+            self.reply_to = None;
+        }
+    }
+
+    /// Acts on a spoken reply: a command, or a message for the thread.
+    fn on_reply(&mut self, thread: String, text: String) {
+        use crate::text::speakable::{chunks, parse_reply, speakable, Reply};
+        let v = self.settings.voice.clone();
+        let reply = parse_reply(&text, &v);
+        log::write(&format!("reply: {reply:?}"));
+        let read_piece = |app: &mut App| {
+            if let Some((t, pieces, next)) = app.reading.as_mut() {
+                if let Some(piece) = pieces.get(*next).cloned() {
+                    *next += 1;
+                    let more = *next < pieces.len();
+                    let thread = t.clone();
+                    let text = if more && v.cmd_more { format!("{piece} Say more for the rest.") } else { piece };
+                    app.reply_and_listen(text, &thread);
+                    return;
+                }
+            }
+            app.reply_and_listen("That's all of it.".into(), &thread);
+        };
+        match reply {
+            Reply::Yes | Reply::No => {
+                self.reply_and_listen("I can't answer that from here yet. Please do it in T3 Code.".into(), &thread);
+            }
+            Reply::Read => match t3_watch::last_message(&thread) {
+                Some(answer) => {
+                    self.reading = Some((thread.clone(), chunks(&speakable(&answer), 400), 0));
+                    read_piece(self);
+                }
+                None => self.reply_and_listen("There's no answer to read yet.".into(), &thread),
+            },
+            Reply::More => read_piece(self),
+            Reply::Repeat => {
+                let last = crate::speech::tts::last_spoken().unwrap_or_else(|| "Nothing to repeat.".into());
+                self.reply_and_listen(last, &thread);
+            }
+            Reply::Stop => crate::speech::tts::stop(),
+            Reply::Status => {
+                let list = t3_watch::status();
+                let text = if list.is_empty() {
+                    "Nothing is running right now.".to_string()
+                } else {
+                    list.iter().map(|(t, state)| format!("{}: {state}.", t.name)).collect::<Vec<_>>().join(" ")
+                };
+                self.reply_and_listen(text, &thread);
+            }
+            Reply::End => {
+                self.reading = None;
+                crate::speech::tts::say(crate::speech::tts::fill("Very good{a}.", &v.address), v);
+            }
+            Reply::Other(message) if !message.trim().is_empty() && v.cmd_other => {
+                // Anything else is your next message to the same thread.
+                self.reading = None;
+                if let Some(t) = apps::thread(&thread) {
+                    send_text(message, InsertMode::T3, false, Some(apps::T3Target::Thread(t)), v);
+                }
+            }
+            Reply::Other(_) => {}
         }
     }
 
@@ -916,8 +1087,22 @@ impl App {
     /// Stops a tap-started dictation after the chosen seconds of silence, and sets the
     /// countdown shown in the pill during the last seconds. Runs on the frame tick.
     fn check_auto_stop(&mut self) {
-        let limit = self.active.auto_stop_seconds as f32;
         let level = self.active.silence_level;
+        if self.reply_to.is_some() {
+            // A spoken reply: stop 1.5 s after you finish, or when you say nothing at all.
+            if let State::Recording { rec, .. } = &self.state {
+                let done = match rec.silent_for(level) {
+                    Some(quiet) => quiet.as_secs_f32() >= 1.5,
+                    None => rec.seconds() >= self.settings.voice.answer_wait_seconds as f32,
+                };
+                if done {
+                    log::write("reply: stopped listening");
+                    self.stop_recording();
+                }
+            }
+            return;
+        }
+        let limit = self.active.auto_stop_seconds as f32;
         let State::Recording { rec, latched: true, .. } = &self.state else {
             self.countdown = None;
             return;
@@ -1205,6 +1390,9 @@ mod tests {
 /// target app, and the event loop (the card) must keep running meanwhile.
 /// ME_VOICE_NO_INSERT=1: don't paste (stress tests must not type into other windows).
 /// For T3 Code it then says "Sent" / "New session started", or the error line when it failed.
+/// Minutes between "still working" lines, read by the T3 watcher thread.
+static STILL_EVERY: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(2);
+
 fn send_text(text: String, mode: InsertMode, press_enter: bool, t3_target: Option<apps::T3Target>, voice: crate::settings::VoiceSettings) {
     if std::env::var("ME_VOICE_NO_INSERT").as_deref() == Ok("1") {
         return;
@@ -1214,6 +1402,19 @@ fn send_text(text: String, mode: InsertMode, press_enter: bool, t3_target: Optio
         let result = insert::insert_to(&text, mode, press_enter, t3_target.as_ref());
         if let Err(e) = &result {
             log::write(&e.to_string());
+        }
+        if mode == InsertMode::T3 && !text.is_empty() && voice.talk_back {
+            if matches!(result, Ok(true)) {
+                match &t3_target {
+                    Some(apps::T3Target::Thread(t)) => t3_watch::watch_thread(&t.id),
+                    Some(apps::T3Target::NewThread(p)) => t3_watch::watch_new_thread_in(&p.id),
+                    None => match apps::last_opened_thread() {
+                        Some((id, _)) if crate::app::apps::new_chat_message(&text).is_none() => t3_watch::watch_thread(&id),
+                        Some((_, project)) => t3_watch::watch_new_thread_in(&project),
+                        None => {}
+                    },
+                }
+            }
         }
         if mode == InsertMode::T3 && !text.is_empty() {
             let line = match (result, &t3_target) {

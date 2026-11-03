@@ -57,6 +57,18 @@ fn run() -> Result<()> {
         }
         Some("write-icon") => Ok(icon::write_ico(std::path::Path::new(args.get(1).map_or("me-voice.ico", String::as_str)))?),
         Some("live-test") => live_test(args.get(1).ok_or_else(|| anyhow!("usage: me-voice live-test <file.wav>"))?),
+        Some("t3-watch") => {
+            // Test helper: follow a T3 thread for N seconds and print what would be spoken.
+            let id = args.get(1).ok_or_else(|| anyhow!("usage: me-voice t3-watch <thread> [seconds]"))?;
+            let seconds: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(30);
+            app::t3_watch::start(|e| println!("event: {e:?}"), || 1);
+            app::t3_watch::watch_thread(id);
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            println!("status: {:?}", app::t3_watch::status());
+            println!("last message: {:?}", app::t3_watch::last_message(id).map(|m| m.chars().take(120).collect::<String>()));
+            std::thread::sleep(std::time::Duration::from_secs(seconds));
+            Ok(())
+        }
         Some("say") => speech::tts::say_blocking(&args[1..].join(" ")),
         Some("transcribe") => transcribe_file(args.get(1).ok_or_else(|| anyhow!("usage: me-voice transcribe <file.wav>"))?),
         Some(other) => Err(anyhow!("unknown command {other}. Use: settings | toggle | quit | microphones | transcribe <file.wav> | live-test <file.wav>")),

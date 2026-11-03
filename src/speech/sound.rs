@@ -52,7 +52,7 @@ fn notes(beep: Beep) -> &'static [Note] {
 }
 
 fn play_blocking(beep: Beep) -> anyhow::Result<()> {
-    play_generated(move |rate| {
+    play_generated(false, move |rate| {
     let lead = (LEAD_IN * rate) as usize;
     let list = notes(beep);
     let total = lead + list.iter().map(|n| (n.length * rate) as usize).sum::<usize>();
@@ -82,7 +82,7 @@ fn play_blocking(beep: Beep) -> anyhow::Result<()> {
 /// Plays mono samples recorded at `from_rate` (e.g. 24 kHz speech), resampled to the output.
 pub fn play_samples_blocking(samples: &[f32], from_rate: u32) -> anyhow::Result<()> {
     let samples: Arc<[f32]> = samples.into();
-    play_generated(move |rate| {
+    play_generated(true, move |rate| {
         let lead = (LEAD_IN * rate) as usize;
         let step = from_rate as f32 / rate;
         let total = lead + (samples.len() as f32 / step) as usize;
@@ -103,7 +103,10 @@ pub fn play_samples_blocking(samples: &[f32], from_rate: u32) -> anyhow::Result<
 
 /// Opens the default output and plays `sample(i)` for `total` frames. `make` gets the device's
 /// sample rate and returns the sample function and the length in frames.
-fn play_generated<F>(make: impl FnOnce(f32) -> (F, usize)) -> anyhow::Result<()>
+/// Set to cut off the line being spoken (beeps are never cut off).
+pub static STOP_SPEECH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn play_generated<F>(stoppable: bool, make: impl FnOnce(f32) -> (F, usize)) -> anyhow::Result<()>
 where
     F: Fn(usize) -> f32 + Send + Sync + Clone + 'static,
 {
@@ -144,6 +147,13 @@ where
     };
     stream.play()?;
     // Keep the stream alive until the beep has fully played out (plus device latency).
-    std::thread::sleep(Duration::from_secs_f32(total as f32 / rate) + Duration::from_millis(350));
+    // Keep the stream alive until it has played out (plus device latency), or speech is stopped.
+    let until = std::time::Instant::now() + Duration::from_secs_f32(total as f32 / rate) + Duration::from_millis(350);
+    while std::time::Instant::now() < until {
+        if stoppable && STOP_SPEECH.load(Ordering::Relaxed) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
     Ok(())
 }

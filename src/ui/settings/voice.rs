@@ -195,7 +195,7 @@ impl SettingsApp {
 
             theme::section_label(ui, "YOU CAN SAY");
             group(ui, |ui| {
-                setting_row(ui, "yes / allow it", "Approve what it asked", |ui| {
+                setting_row(ui, "yes / allow it", "Approve what it asked (not yet possible: do it in T3 Code)", |ui| {
                     toggle(ui, &mut v.cmd_yes);
                 });
                 setting_row(ui, "no / deny", "Decline", |ui| {
@@ -241,8 +241,8 @@ impl SettingsApp {
         ui.add_space(8.0);
         ui.label(
             egui::RichText::new(
-                "Coming soon: the T3 progress lines (Agent is working, Still working, Needs your OK, Has a question, Finished), \
-                 YOU CAN SAY and CONVERSATION are not wired up yet.",
+                "T3 progress is followed for threads you send to by voice while Talk back is on. \
+                 Approving or answering a request by voice isn't possible yet: T3 Code has no command for it, so \"yes\" and \"no\" tell you to do it in T3 Code.",
             )
             .size(12.0)
             .weak(),

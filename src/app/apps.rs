@@ -23,7 +23,7 @@ pub fn t3_code_installed() -> bool {
 
 /// T3 Code's data folder: `T3CODE_HOME` when set, else `%USERPROFILE%\.t3`.
 #[cfg(windows)]
-fn t3_home() -> Option<std::path::PathBuf> {
+pub(crate) fn t3_home() -> Option<std::path::PathBuf> {
     match std::env::var_os("T3CODE_HOME") {
         Some(home) if !home.is_empty() => Some(home.into()),
         _ => std::env::var_os("USERPROFILE").map(|home| std::path::PathBuf::from(home).join(".t3")),
@@ -99,7 +99,7 @@ pub const RECENT_THREADS: usize = 6;
 
 /// T3's state database, read-only, not immutable, so visits still sitting in the WAL file are seen too.
 #[cfg(windows)]
-fn open_state(home: &std::path::Path) -> anyhow::Result<rusqlite::Connection> {
+pub(crate) fn open_state(home: &std::path::Path) -> anyhow::Result<rusqlite::Connection> {
     use rusqlite::{Connection, OpenFlags};
     let db = home.join("userdata").join("statev2.sqlite");
     let conn = Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
@@ -257,6 +257,18 @@ fn last_opened_thread_in(conn: &rusqlite::Connection) -> anyhow::Result<(String,
     anyhow::ensure!(is_thread_id(&id), "T3 Code thread id looks wrong");
     anyhow::ensure!(is_project_id(&project), "T3 Code project id looks wrong");
     Ok((id, project))
+}
+
+/// The thread a send without a picked target goes to (the one opened last): (thread, project).
+#[cfg(windows)]
+pub fn last_opened_thread() -> Option<(String, String)> {
+    let home = t3_home()?;
+    open_state(&home).and_then(|c| last_opened_thread_in(&c)).ok()
+}
+
+#[cfg(not(windows))]
+pub fn last_opened_thread() -> Option<(String, String)> {
+    None
 }
 
 /// Windows flag: start the child process without a console window.
