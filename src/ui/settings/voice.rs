@@ -190,13 +190,7 @@ impl SettingsApp {
 
             theme::section_label(ui, "YOU CAN SAY");
             group(ui, |ui| {
-                setting_row(ui, "yes / allow it", "Approve what it asked (not yet possible: do it in T3 Code)", |ui| {
-                    toggle(ui, &mut v.cmd_yes);
-                });
-                setting_row(ui, "no / deny", "Decline", |ui| {
-                    toggle(ui, &mut v.cmd_no);
-                });
-                setting_row(ui, "read it / summary", "Read the answer (short)", |ui| {
+                setting_row(ui, "yes / read it", "Read the answer (short)", |ui| {
                     toggle(ui, &mut v.cmd_read);
                 });
                 setting_row(ui, "more", "Keep reading", |ui| {
@@ -211,7 +205,7 @@ impl SettingsApp {
                 setting_row(ui, "status", "\"What's it doing?\"", |ui| {
                     toggle(ui, &mut v.cmd_status);
                 });
-                setting_row(ui, "that's all", "End the conversation", |ui| {
+                setting_row(ui, "no / that's all", "End the conversation", |ui| {
                     toggle(ui, &mut v.cmd_end);
                 });
                 setting_row(ui, "Anything else", "Is sent as your next message to the same T3 thread.", |ui| {
@@ -234,14 +228,6 @@ impl SettingsApp {
         });
 
         ui.add_space(8.0);
-        ui.label(
-            egui::RichText::new(
-                "T3 progress is followed for threads you send to by voice while Talk back is on. \
-                 Approving or answering a request by voice isn't possible yet: T3 Code has no command for it, so \"yes\" and \"no\" tell you to do it in T3 Code.",
-            )
-            .size(12.0)
-            .weak(),
-        );
         ui.label(egui::RichText::new("Kokoro and its files stay on this PC. Nothing you hear is generated online.").size(12.0).weak());
     }
 }

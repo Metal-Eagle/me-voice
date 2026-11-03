@@ -169,13 +169,8 @@ impl Lexicon {
                 return number_words(n).split(' ').map(|w| self.word(w)).collect::<Vec<_>>().join(" ");
             }
         }
-        // Plural / possessive of a known word.
-        for suffix in ["'s", "s"] {
-            if let Some(stem) = word.strip_suffix(suffix) {
-                if let Some(p) = self.lookup(stem) {
-                    return format!("{p}z");
-                }
-            }
+        if let Some(p) = self.inflected(word) {
+            return p;
         }
         // Letters and digits mixed (T3, GPT): say them one by one.
         word.chars()
@@ -190,6 +185,56 @@ impl Lexicon {
             })
             .collect::<Vec<_>>()
             .join(" ")
+    }
+
+    /// A known word plus -s, -'s, -ed or -ing ("delivered" from "deliver"), so words missing
+    /// from the dictionary aren't spelled out letter by letter.
+    fn inflected(&self, word: &str) -> Option<String> {
+        let lower = word.to_lowercase();
+        // Stems to try: as is, with a final e put back (used -> use), and with a doubled
+        // consonant undone (stopped -> stop).
+        let stems = |rest: &str| -> Vec<String> {
+            let mut v = vec![rest.to_string(), format!("{rest}e")];
+            // copied -> copy
+            if let Some(r) = rest.strip_suffix('i') {
+                v.push(format!("{r}y"));
+            }
+            let b = rest.as_bytes();
+            if b.len() >= 2 && b[b.len() - 1] == b[b.len() - 2] {
+                v.push(rest[..rest.len() - 1].to_string());
+            }
+            v
+        };
+        let last = |p: &str| p.chars().rev().find(|c| !matches!(c, 'ˈ' | 'ˌ' | 'ː')).unwrap_or(' ');
+        let find = |rest: &str| stems(rest).into_iter().find_map(|s| self.lookup(&s));
+        if let Some(rest) = lower.strip_suffix("ed").or_else(|| lower.strip_suffix('d')) {
+            if let Some(p) = find(rest) {
+                let end = match last(&p) {
+                    't' | 'd' => "ᵻd",
+                    'p' | 'k' | 'f' | 's' | 'ʃ' | 'ʧ' | 'θ' => "t",
+                    _ => "d",
+                };
+                return Some(format!("{p}{end}"));
+            }
+        }
+        if let Some(rest) = lower.strip_suffix("ing") {
+            if let Some(p) = find(rest) {
+                return Some(format!("{p}ɪŋ"));
+            }
+        }
+        for suffix in ["'s", "es", "s"] {
+            if let Some(rest) = lower.strip_suffix(suffix) {
+                if let Some(p) = self.lookup(rest) {
+                    let end = match last(&p) {
+                        's' | 'z' | 'ʃ' | 'ʒ' | 'ʧ' | 'ʤ' => "ᵻz",
+                        'p' | 't' | 'k' | 'f' | 'θ' => "s",
+                        _ => "z",
+                    };
+                    return Some(format!("{p}{end}"));
+                }
+            }
+        }
+        None
     }
 
     fn phonemize(&self, text: &str) -> String {
@@ -297,7 +342,7 @@ impl Line {
             Line::NewChat => &["New session started in T3 Code."],
             Line::Working => &["Working on it.", "The agent's on it now."],
             Line::StillWorking => &["Still at it{a}.", "Bear with it. Still working."],
-            Line::NeedsOk => &["It's asking to run a command. Shall I allow it?"],
+            Line::NeedsOk => &["It needs your OK in T3 Code{a}."],
             Line::Question => &["It has a question for you{a}."],
             Line::Finished => &["Finished{a}. Shall I read you the summary?"],
             Line::Error => &["I'm afraid T3 Code isn't running.", "That didn't go through{a}."],
@@ -449,5 +494,19 @@ mod tests {
     #[test]
     fn sentences() {
         assert_eq!(split_sentences("Got it, sir. On it! Ok"), vec!["Got it, sir.", "On it!", "Ok"]);
+    }
+
+    #[test]
+    fn known_words_with_endings_are_not_spelled_out() {
+        let words = [("deliver", "dəlˈɪvɚ"), ("stop", "stˈɑp"), ("use", "jˈuz"), ("start", "stˈɑɹt"), ("box", "bˈɑks"), ("copy", "kˈɑpi")];
+        let lex = Lexicon { words: words.iter().map(|(w, p)| (w.to_string(), p.to_string())).collect() };
+        assert_eq!(lex.word("Delivered"), "dəlˈɪvɚd");
+        assert_eq!(lex.word("stopped"), "stˈɑpt");
+        assert_eq!(lex.word("used"), "jˈuzd");
+        assert_eq!(lex.word("started"), "stˈɑɹtᵻd");
+        assert_eq!(lex.word("starting"), "stˈɑɹtɪŋ");
+        assert_eq!(lex.word("boxes"), "bˈɑksᵻz");
+        assert_eq!(lex.word("stops"), "stˈɑps");
+        assert_eq!(lex.word("copied"), "kˈɑpid");
     }
 }

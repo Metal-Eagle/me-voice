@@ -253,8 +253,6 @@ fn split_long(sentence: &str, max: usize) -> Vec<String> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Reply {
-    Yes,
-    No,
     Read,
     More,
     Repeat,
@@ -301,9 +299,8 @@ pub fn parse_reply(text: &str, v: &VoiceSettings) -> Reply {
 
     let phrase = words.join(" ");
     let (reply, switch_on) = match phrase.as_str() {
-        "yes" | "yeah" | "yep" | "sure" | "allow" | "allow it" | "go ahead" | "do it" | "approve" => (Reply::Yes, v.cmd_yes),
-        "no" | "nope" | "deny" | "deny it" | "don't" | "do not" | "cancel" => (Reply::No, v.cmd_no),
-        "read it" | "read" | "read it out" | "summary" | "read the summary" | "what did it say" | "tell me" => {
+        // "Yes" answers "Shall I read you the answer?"; "no" ends the conversation.
+        "yes" | "yeah" | "yep" | "sure" | "go ahead" | "read it" | "read" | "read it out" | "summary" | "read the summary" | "what did it say" | "tell me" => {
             (Reply::Read, v.cmd_read)
         }
         "more" | "continue" | "go on" | "keep going" | "next" => (Reply::More, v.cmd_more),
@@ -313,7 +310,7 @@ pub fn parse_reply(text: &str, v: &VoiceSettings) -> Reply {
         "stop" | "quiet" | "be quiet" | "silence" | "shut up" | "enough" | "stop talking" => (Reply::Stop, v.cmd_stop),
         "status" | "what's it doing" | "what is it doing" | "what's running" | "what is running" | "what's happening"
         | "update" => (Reply::Status, v.cmd_status),
-        "that's all" | "that is all" | "end" | "goodbye" | "bye" | "done" | "never mind" | "nothing" => {
+        "no" | "nope" | "don't" | "do not" | "cancel" | "that's all" | "that is all" | "end" | "goodbye" | "bye" | "done" | "never mind" | "nothing" => {
             (Reply::End, v.cmd_end)
         }
         _ => return other(),
@@ -514,37 +511,31 @@ mod tests {
 
     #[test]
     fn whisper_style_commands() {
-        assert_eq!(parse("Yes."), Reply::Yes);
+        assert_eq!(parse("Yes."), Reply::Read);
         assert_eq!(parse("Read it, sir."), Reply::Read);
         assert_eq!(parse("That's all, thank you."), Reply::End);
-        assert_eq!(parse("No, thanks."), Reply::No);
+        assert_eq!(parse("No, thanks."), Reply::End);
         assert_eq!(parse("Please stop."), Reply::Stop);
         assert_eq!(parse("Okay, read it."), Reply::Read);
-        assert_eq!(parse("Yes, please"), Reply::Yes);
+        assert_eq!(parse("Yes, please"), Reply::Read);
         assert_eq!(parse("Repeat that, ma'am"), Reply::Repeat);
-        assert_eq!(parse("Okay, sure, thanks"), Reply::Yes);
-        assert_eq!(parse("Please yes"), Reply::Yes);
+        assert_eq!(parse("Okay, sure, thanks"), Reply::Read);
+        assert_eq!(parse("Please yes"), Reply::Read);
     }
 
     #[test]
     fn every_phrase_maps_to_its_reply() {
         let cases: &[(&str, Reply)] = &[
-            ("yes", Reply::Yes),
-            ("yeah", Reply::Yes),
-            ("yep", Reply::Yes),
-            ("sure", Reply::Yes),
-            ("allow", Reply::Yes),
-            ("Allow it!", Reply::Yes),
-            ("go ahead", Reply::Yes),
-            ("do it", Reply::Yes),
-            ("approve", Reply::Yes),
-            ("no", Reply::No),
-            ("nope", Reply::No),
-            ("deny", Reply::No),
-            ("deny it", Reply::No),
-            ("Don't.", Reply::No),
-            ("do not", Reply::No),
-            ("cancel", Reply::No),
+            ("yes", Reply::Read),
+            ("yeah", Reply::Read),
+            ("yep", Reply::Read),
+            ("sure", Reply::Read),
+            ("go ahead", Reply::Read),
+            ("no", Reply::End),
+            ("nope", Reply::End),
+            ("Don't.", Reply::End),
+            ("do not", Reply::End),
+            ("cancel", Reply::End),
             ("read it", Reply::Read),
             ("read", Reply::Read),
             ("read it out", Reply::Read),
@@ -594,7 +585,7 @@ mod tests {
 
     #[test]
     fn curly_apostrophes_match() {
-        assert_eq!(parse("Don\u{2019}t."), Reply::No);
+        assert_eq!(parse("Don\u{2019}t."), Reply::End);
         assert_eq!(parse("That\u{2019}s all"), Reply::End);
     }
 
@@ -625,13 +616,13 @@ mod tests {
     #[test]
     fn punctuation_is_ignored_inside_the_phrase() {
         assert_eq!(parse("Read... it!"), Reply::Read);
-        assert_eq!(parse("\"yes\""), Reply::Yes);
+        assert_eq!(parse("\"yes\""), Reply::Read);
     }
 
     #[test]
     fn address_is_stripped_with_or_without_comma() {
-        assert_eq!(parse("Yes sir"), Reply::Yes);
-        assert_eq!(parse("Yes, ma'am."), Reply::Yes);
+        assert_eq!(parse("Yes sir"), Reply::Read);
+        assert_eq!(parse("Yes, ma'am."), Reply::Read);
         assert_eq!(parse("Yes, Captain."), Reply::Other("Yes, Captain.".into()));
     }
 
@@ -639,7 +630,7 @@ mod tests {
     fn configured_address_is_stripped() {
         let mut v = voice();
         v.address = "Captain".into();
-        assert_eq!(parse_reply("Yes, Captain.", &v), Reply::Yes);
+        assert_eq!(parse_reply("Yes, Captain.", &v), Reply::Read);
         assert_eq!(parse_reply("Read it, captain", &v), Reply::Read);
     }
 
@@ -647,14 +638,14 @@ mod tests {
     fn empty_address_strips_nothing_extra() {
         let mut v = voice();
         v.address = String::new();
-        assert_eq!(parse_reply("Yes, sir.", &v), Reply::Yes);
+        assert_eq!(parse_reply("Yes, sir.", &v), Reply::Read);
         assert_eq!(parse_reply("Read it, Captain", &v), Reply::Other("Read it, Captain".into()));
     }
 
     #[test]
     fn disabled_switch_becomes_other_with_original_text() {
         let mut v = voice();
-        v.cmd_yes = false;
+        v.cmd_read = false;
         assert_eq!(parse_reply("  Yes. ", &v), Reply::Other("Yes.".into()));
         v = voice();
         v.cmd_stop = false;
@@ -673,6 +664,6 @@ mod tests {
         assert_eq!(parse_reply("read it", &v), Reply::Other("read it".into()));
         assert_eq!(parse_reply("bye", &v), Reply::Other("bye".into()));
         assert_eq!(parse_reply("more", &v), Reply::More);
-        assert_eq!(parse_reply("no", &v), Reply::No);
+        assert_eq!(parse_reply("no", &v), Reply::Other("no".into()));
     }
 }

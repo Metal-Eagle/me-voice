@@ -956,9 +956,6 @@ impl App {
             app.reply_and_listen("That's all of it.".into(), &thread);
         };
         match reply {
-            Reply::Yes | Reply::No => {
-                self.reply_and_listen("I can't answer that from here yet. Please do it in T3 Code.".into(), &thread);
-            }
             Reply::Read => match t3_watch::last_message(&thread) {
                 Some(answer) => {
                     self.reading = Some((thread.clone(), chunks(&speakable(&answer), 400), 0));
