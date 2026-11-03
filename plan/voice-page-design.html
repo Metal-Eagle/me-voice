@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Voice page design</title>
+<style>
+  :root { --window:#16181b; --sidebar:#111315; --card:#1f2226; --field:#121417; --widget:#2a2e34; --hover:#343940;
+    --border:#2b2f35; --text:#e8eaed; --weak:#8e959e; --accent:#1e9bff; --green:#34c759; --orange:#ff9500; --purple:#af52de; --red:#e04f45; }
+  :root[data-theme="light"] { --window:#f4f5f7; --sidebar:#eaecf0; --card:#fff; --field:#f7f8fa; --widget:#eceef2; --hover:#e1e4e9;
+    --border:#e0e3e8; --text:#1c1e21; --weak:#6b727c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#0b0c0e; font:13px/1.45 "Segoe UI", system-ui, sans-serif; color:var(--text); padding:24px; }
+  :root[data-theme="light"] body { background:#d9dce1; }
+  .bar { max-width:900px; margin:0 auto 10px; display:flex; gap:8px; color:#9aa1a8; align-items:center; }
+  .bar button { font:inherit; background:#2a2e34; color:#e8eaed; border:1px solid #3a3f46; border-radius:999px; padding:4px 12px; cursor:pointer; }
+  .win { max-width:900px; height:760px; margin:0 auto; display:flex; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:var(--window); box-shadow:0 20px 60px rgba(0,0,0,.45); }
+  nav { width:190px; background:var(--sidebar); padding:16px 8px; flex-shrink:0; }
+  nav .brand { font-weight:600; padding:0 10px 14px; display:flex; gap:8px; align-items:center; }
+  nav .brand i { width:18px; height:18px; border-radius:50%; background:var(--accent); display:inline-block; }
+  nav a { display:flex; gap:10px; align-items:center; padding:7px 10px; border-radius:7px; color:var(--weak); text-decoration:none; margin-bottom:2px; }
+  nav a span.ic { width:16px; text-align:center; }
+  nav a.on { background:var(--widget); color:var(--text); }
+  nav a .new { margin-left:auto; font-size:10px; background:var(--accent); color:#fff; border-radius:999px; padding:0 6px; }
+  .content { flex:1; overflow-y:auto; padding:22px 26px 40px; }
+  h1 { font-size:20px; margin:0 0 2px; }
+  .sub { color:var(--weak); margin:0 0 18px; }
+  .label { font-size:11px; letter-spacing:.06em; color:var(--weak); margin:22px 0 6px 2px; font-weight:600; }
+  .group { background:var(--card); border:1px solid var(--border); border-radius:10px; }
+  .row { display:flex; align-items:center; gap:14px; padding:11px 14px; border-top:1px solid var(--border); }
+  .row:first-child { border-top:0; }
+  .row .t { flex:1; min-width:0; }
+  .row .t b { font-weight:500; display:block; }
+  .row .t small { color:var(--weak); }
+  .say { color:var(--weak); font-style:italic; }
+  .say em { color:var(--text); font-style:normal; }
+  .toggle { width:36px; height:20px; border-radius:999px; background:var(--widget); position:relative; flex-shrink:0; cursor:pointer; }
+  .toggle::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.15s; }
+  .toggle.on { background:var(--accent); }
+  .toggle.on::after { left:18px; }
+  .combo { background:var(--widget); border-radius:6px; padding:5px 10px; min-width:150px; display:flex; justify-content:space-between; gap:8px; }
+  .combo::after { content:"▾"; color:var(--weak); }
+  .btn { background:var(--widget); border-radius:6px; padding:5px 12px; cursor:pointer; white-space:nowrap; }
+  .btn.primary { background:var(--accent); color:#fff; }
+  .play { width:26px; height:26px; border-radius:50%; background:var(--widget); display:grid; place-items:center; font-size:10px; cursor:pointer; flex-shrink:0; }
+  .slider { width:150px; height:4px; background:var(--widget); border-radius:2px; position:relative; }
+  .slider i { position:absolute; left:0; top:0; bottom:0; width:var(--v); background:var(--accent); border-radius:2px; }
+  .slider i::after { content:""; position:absolute; right:-7px; top:-5px; width:14px; height:14px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .val { color:var(--weak); width:42px; text-align:right; }
+  .status { display:flex; gap:12px; align-items:center; padding:14px; }
+  .orb { width:44px; height:44px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #7cc8ff, var(--accent) 55%, #0a4f8a); box-shadow:0 0 18px rgba(30,155,255,.55); flex-shrink:0; }
+  .pill { font-size:11px; border-radius:999px; padding:1px 8px; background:rgba(52,199,89,.16); color:var(--green); }
+  .seg { display:flex; background:var(--widget); border-radius:7px; padding:2px; }
+  .seg span { padding:4px 10px; border-radius:5px; color:var(--weak); cursor:pointer; }
+  .seg span.on { background:var(--card); color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .cmds { display:grid; grid-template-columns:1fr 1fr; gap:0; }
+  .cmds .row { border-top:1px solid var(--border); }
+  .cmds .row:nth-child(-n+2) { border-top:0; }
+  .chip { background:var(--field); border:1px solid var(--border); border-radius:6px; padding:1px 7px; font-size:12px; white-space:nowrap; }
+  .note { color:var(--weak); font-size:12px; margin:8px 2px 0; }
+  .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+</style>
+</head>
+<body>
+<div class="bar">Design mock-up: settings window with the new <b style="color:#e8eaed">Voice</b> page.
+  <button onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'light' ? '' : 'light'">Light / dark</button></div>
+<div class="win">
+  <nav>
+    <div class="brand"><i></i>me-voice</div>
+    <a><span class="ic">▦</span>Dashboard</a>
+    <a><span class="ic">◷</span>History</a>
+    <a><span class="ic">⌨</span>Shortcut</a>
+    <a><span class="ic">🎙</span>Speech</a>
+    <a><span class="ic">≡</span>Behaviour</a>
+    <a><span class="ic">T</span>Words</a>
+    <a><span class="ic">◫</span>Profiles</a>
+    <a><span class="ic">✦</span>AI</a>
+    <a class="on"><span class="ic">◉</span>Voice<span class="new">new</span></a>
+    <a><span class="ic">ⓘ</span>About</a>
+  </nav>
+
+  <div class="content">
+    <h1>Voice</h1>
+    <p class="sub">me-voice talks back: it tells you what's happening and you answer by voice. Everything runs on this PC.</p>
+
+    <div class="group">
+      <div class="status">
+        <div class="orb"></div>
+        <div class="t" style="flex:1">
+          <b>Kokoro · Heart <span class="pill">Ready</span></b>
+          <small style="color:var(--weak)">Kokoro-82M, full quality (fp32) · 310 MB · on this PC</small>
+        </div>
+        <div class="btn">▶ Test voice</div>
+      </div>
+      <div class="row"><div class="t"><b>Talk back</b><small>Turn all spoken lines on or off. Beeps still follow Behaviour → Sounds.</small></div><div class="toggle on"></div></div>
+      <div class="row"><div class="t"><b>Voice</b><small>American English. More voices can be added later.</small></div><div class="combo">Heart (af_heart)</div></div>
+      <div class="row"><div class="t"><b>Speed</b></div><div class="slider" style="--v:50%"><i></i></div><div class="val">1.0×</div></div>
+      <div class="row"><div class="t"><b>Volume</b></div><div class="slider" style="--v:70%"><i></i></div><div class="val">70%</div></div>
+      <div class="row"><div class="t"><b>Call me</b><small>How it addresses you.</small></div>
+        <div class="seg"><span class="on">sir</span><span>ma'am</span><span>Jeroen</span><span>nothing</span></div></div>
+    </div>
+
+    <div class="label">SAY OUT LOUD WHEN…</div>
+    <div class="group">
+      <div class="row"><span class="dot" style="background:var(--red)"></span><div class="t"><b>Listening stops</b><span class="say">"<em>Got it, sir.</em>" · "Very good." · "On it."</span></div><div class="play">▶</div><div class="combo" style="min-width:110px">Voice</div></div>
+      <div class="row"><span class="dot" style="background:var(--accent)"></span><div class="t"><b>Sent to T3 Code</b><span class="say">"<em>Sent to me-voice.</em>"</span></div><div class="play">▶</div><div class="toggle on"></div></div>
+      <div class="row"><span class="dot" style="background:var(--accent)"></span><div class="t"><b>New chat started</b><span class="say">"<em>New session started in T3 Code.</em>"</span></div><div class="play">▶</div><div class="toggle on"></div></div>
+      <div class="row"><span class="dot" style="background:var(--orange)"></span><div class="t"><b>Agent is working</b><span class="say">"<em>Working on it.</em>"</span></div><div class="play">▶</div><div class="toggle on"></div></div>
+      <div class="row"><span class="dot" style="background:var(--orange)"></span><div class="t"><b>Still working</b><span class="say">"<em>Still at it, sir.</em>"</span></div><div class="play">▶</div><div class="combo" style="min-width:110px">Every 2 min</div></div>
+      <div class="row"><span class="dot" style="background:var(--purple)"></span><div class="t"><b>Needs your OK</b><span class="say">"<em>It's asking to run a command. Shall I allow it?</em>"</span></div><div class="play">▶</div><div class="toggle on"></div></div>
+      <div class="row"><span class="dot" style="background:var(--purple)"></span><div class="t"><b>Has a question</b><span class="say">"<em>It has a question for you, sir.</em>" then reads it</span></div><div class="play">▶</div><div class="toggle on"></div></div>
+      <div class="row"><span class="dot" style="background:var(--green)"></span><div class="t"><b>Finished</b><span class="say">"<em>Finished, sir. Shall I read you the summary?</em>"</span></div><div class="play">▶</div><div class="toggle on"></div></div>
+      <div class="row"><span class="dot" style="background:var(--red)"></span><div class="t"><b>Something went wrong</b><span class="say">"<em>I'm afraid T3 Code isn't running.</em>"</span></div><div class="play">▶</div><div class="toggle on"></div></div>
+      <div class="row"><span class="dot" style="background:var(--weak)"></span><div class="t"><b>Command Mode answers</b><span class="say">Reads the AI's answer instead of only pasting it</span></div><div class="play">▶</div><div class="toggle"></div></div>
+    </div>
+
+    <div class="label">YOU CAN SAY</div>
+    <div class="group">
+      <div class="cmds">
+        <div class="row"><div class="t"><span class="chip">yes</span> <span class="chip">allow it</span><br><small>Approve what it asked</small></div><div class="toggle on"></div></div>
+        <div class="row"><div class="t"><span class="chip">no</span> <span class="chip">deny</span><br><small>Decline</small></div><div class="toggle on"></div></div>
+        <div class="row"><div class="t"><span class="chip">read it</span> <span class="chip">summary</span><br><small>Read the answer (short)</small></div><div class="toggle on"></div></div>
+        <div class="row"><div class="t"><span class="chip">more</span><br><small>Keep reading</small></div><div class="toggle on"></div></div>
+        <div class="row"><div class="t"><span class="chip">repeat</span><br><small>Say the last line again</small></div><div class="toggle on"></div></div>
+        <div class="row"><div class="t"><span class="chip">stop</span> <span class="chip">quiet</span><br><small>Stop talking now</small></div><div class="toggle on"></div></div>
+        <div class="row"><div class="t"><span class="chip">status</span><br><small>"What's it doing?"</small></div><div class="toggle on"></div></div>
+        <div class="row"><div class="t"><span class="chip">that's all</span><br><small>End the conversation</small></div><div class="toggle on"></div></div>
+      </div>
+      <div class="row"><div class="t"><b>Anything else</b><small>Is sent as your next message to the same T3 thread.</small></div><div class="toggle on"></div></div>
+    </div>
+
+    <div class="label">CONVERSATION</div>
+    <div class="group">
+      <div class="row"><div class="t"><b>Listen after speaking</b><small>After a question or "Finished", it listens for your answer.</small></div><div class="toggle on"></div></div>
+      <div class="row"><div class="t"><b>Wait for an answer</b></div><div class="slider" style="--v:40%"><i></i></div><div class="val">6 s</div></div>
+      <div class="row"><div class="t"><b>Interrupt by talking</b><small>Start speaking or press the shortcut to cut it off.</small></div><div class="toggle on"></div></div>
+      <div class="row"><div class="t"><b>Shortcut</b><small>Starts a conversation with the T3 thread you see.</small></div><div class="btn">Ctrl + F5</div></div>
+    </div>
+    <p class="note">Kokoro and its files stay on this PC. Nothing you hear is generated online.</p>
+  </div>
+</div>
+</body>
+</html>
