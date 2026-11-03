@@ -118,34 +118,29 @@ impl SettingsApp {
             setting_row(ui, "Volume", "", |ui| {
                 ui.add(egui::Slider::new(&mut v.volume, 0.0..=1.0).custom_formatter(|n, _| format!("{:.0}%", n * 100.0)));
             });
-            setting_row(ui, "Call me", "How it addresses you.", |ui| {
-                // A preset, or "Something else…" which shows a field to type your own.
+            setting_row(ui, "Call me", "How it addresses you. Pick \"Something else…\" to type a name.", |ui| {
+                // A preset, or "Something else…": then a name field appears left of the menu.
                 let presets = ["sir", "ma'am", ""];
-                let custom_id = egui::Id::unique("voice-address-custom");
+                let custom_id = egui::Id::NULL.with("voice-address-custom");
                 let mut custom = ui.data(|d| d.get_temp::<bool>(custom_id)).unwrap_or(!presets.contains(&v.address.as_str()));
                 let shown = if custom { "Something else…".to_string() } else { address_label(&v.address).to_string() };
-                ui.vertical(|ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        egui::ComboBox::from_id_salt("voice-address").selected_text(shown).show_ui(ui, |ui| {
-                            for p in presets {
-                                if ui.selectable_label(!custom && v.address == p, address_label(p)).clicked() {
-                                    v.address = p.to_string();
-                                    custom = false;
-                                }
-                            }
-                            if ui.selectable_label(custom, "Something else…").clicked() && !custom {
-                                custom = true;
-                                v.address.clear();
-                            }
-                        });
-                    });
-                    if custom {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let field = egui::TextEdit::singleline(&mut v.address).hint_text("Your name").desired_width(180.0);
-                            crate::ui::text_menu::add(ui, field);
-                        });
+                // Right to left: the menu on the right, the name field just before it.
+                egui::ComboBox::from_id_salt("voice-address").selected_text(shown).show_ui(ui, |ui| {
+                    for p in presets {
+                        if ui.selectable_label(!custom && v.address == p, address_label(p)).clicked() {
+                            v.address = p.to_string();
+                            custom = false;
+                        }
+                    }
+                    if ui.selectable_label(custom, "Something else…").clicked() && !custom {
+                        custom = true;
+                        v.address.clear();
                     }
                 });
+                if custom {
+                    let field = egui::TextEdit::singleline(&mut v.address).hint_text("Your name").desired_width(140.0);
+                    crate::ui::text_menu::add(ui, field);
+                }
                 ui.data_mut(|d| d.insert_temp(custom_id, custom));
             });
         });
