@@ -341,6 +341,7 @@ pub enum Icon {
     Info,
     Layers,
     Sparkle,
+    Speaker,
 }
 
 /// Coloured round badge with an icon (dashboard cards).
@@ -422,6 +423,12 @@ pub fn paint_icon(p: &egui::Painter, c: Pos2, icon: Icon, colour: Color32, s: f3
             p.circle_stroke(c, 8.0 * s, stroke);
             p.line_segment([at(0.0, -1.0), at(0.0, 4.5)], stroke);
             p.circle_filled(at(0.0, -4.5), 1.2 * s, colour);
+        }
+        Icon::Speaker => {
+            // A speaker cone with two sound waves.
+            p.add(egui::Shape::closed_line(vec![at(-8.0, -3.0), at(-4.0, -3.0), at(1.5, -7.0), at(1.5, 7.0), at(-4.0, 3.0), at(-8.0, 3.0)], stroke));
+            p.add(egui::Shape::line(arc(1.0, 0.0, 4.5, -PI / 3.0, PI / 3.0), stroke));
+            p.add(egui::Shape::line(arc(1.0, 0.0, 8.0, -PI / 3.0, PI / 3.0), stroke));
         }
         Icon::Layers => {
             // Three stacked diamonds.

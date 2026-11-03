@@ -16,14 +16,16 @@ const CLIPBOARD_RESTORE_DELAY: Duration = Duration::from_millis(900);
 
 /// Inserts the text; with `press_enter`, presses Enter afterwards (sends chat messages).
 pub fn insert(text: &str, mode: InsertMode, press_enter: bool) -> Result<()> {
-    insert_to(text, mode, press_enter, None)
+    insert_to(text, mode, press_enter, None).map(|_| ())
 }
 
 /// Like `insert`; T3 native sends to `t3_target` when given instead of the thread opened last.
-pub fn insert_to(text: &str, mode: InsertMode, press_enter: bool, t3_target: Option<&crate::app::apps::T3Target>) -> Result<()> {
+/// Returns whether the text reached T3 Code through its CLI (false when typed or pasted).
+pub fn insert_to(text: &str, mode: InsertMode, press_enter: bool, t3_target: Option<&crate::app::apps::T3Target>) -> Result<bool> {
     if text.is_empty() && !press_enter {
-        return Ok(());
+        return Ok(false);
     }
+    let mut sent_to_t3 = false;
     // With a shortcut like Ctrl+Shift+Alt+Space, a still-held Shift or Alt would turn
     // our Ctrl+V into Ctrl+Shift+Alt+V, which apps ignore. Wait until they're released.
     wait_for_keys_released(Duration::from_millis(1500));
@@ -34,9 +36,12 @@ pub fn insert_to(text: &str, mode: InsertMode, press_enter: bool, t3_target: Opt
             InsertMode::Paste => paste(&mut enigo, text, press_enter)?,
             InsertMode::T3 => {
                 // The T3 CLI submits the message itself, so Enter is never pressed for it below.
-                if let Err(e) = crate::app::apps::t3_send(text, t3_target) {
-                    crate::app::log::write(&format!("T3 native insert: {e}"));
-                    type_text(&mut enigo, text)?;
+                match crate::app::apps::t3_send(text, t3_target) {
+                    Ok(()) => sent_to_t3 = true,
+                    Err(e) => {
+                        crate::app::log::write(&format!("T3 native insert: {e}"));
+                        type_text(&mut enigo, text)?;
+                    }
                 }
             }
         }
@@ -45,7 +50,7 @@ pub fn insert_to(text: &str, mode: InsertMode, press_enter: bool, t3_target: Opt
         sleep(Duration::from_millis(60));
         enigo.key(Key::Return, Click).map_err(|e| anyhow!("enter: {e}"))?;
     }
-    Ok(())
+    Ok(sent_to_t3)
 }
 
 /// Types the text. Line breaks go in as Shift+Enter: a plain Enter sends the message in chat

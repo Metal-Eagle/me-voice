@@ -7,6 +7,7 @@ mod behaviour;
 mod profiles;
 mod shortcuts;
 mod speech;
+mod voice;
 mod words;
 
 use about::*;
@@ -32,6 +33,7 @@ enum Page {
     Words,
     Profiles,
     Ai,
+    Voice,
     About,
 }
 
@@ -155,6 +157,7 @@ pub fn run() -> Result<()> {
         Ok("words") => Page::Words,
         Ok("profiles") => Page::Profiles,
         Ok("ai") => Page::Ai,
+        Ok("voice") => Page::Voice,
         Ok("about") => Page::About,
         Ok("shortcut") => Page::Shortcut,
         Ok("history") => Page::History,
@@ -263,6 +266,7 @@ impl eframe::App for SettingsApp {
                 (Page::Words, Icon::Text, "Words"),
                 (Page::Profiles, Icon::Layers, "Profiles"),
                 (Page::Ai, Icon::Sparkle, "AI"),
+                (Page::Voice, Icon::Speaker, "Voice"),
                 (Page::About, Icon::Info, "About"),
             ] {
                 if theme::nav_item(ui, icon, label, self.page == page) {
@@ -321,6 +325,7 @@ impl eframe::App for SettingsApp {
                             Page::Words => self.words_page(ui),
                             Page::Profiles => self.profiles_page(ui),
                             Page::Ai => self.ai_page(ui),
+                            Page::Voice => self.voice_page(ui),
                             Page::About => self.about_page(ui),
                         }
                     });

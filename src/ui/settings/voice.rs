@@ -1,0 +1,209 @@
+//! Voice page: Kokoro talks back, and what you can say to it.
+
+use super::*;
+use crate::settings::{StopSound, VoiceSettings};
+use crate::speech::tts::{fill, installed, say, Line};
+
+/// The moments that can be spoken, with their titles on the page.
+const LINES: [(Line, &str); 10] = [
+    (Line::Stop, "Listening stops"),
+    (Line::Sent, "Sent to T3 Code"),
+    (Line::NewChat, "New chat started"),
+    (Line::Working, "Agent is working"),
+    (Line::StillWorking, "Still working"),
+    (Line::NeedsOk, "Needs your OK"),
+    (Line::Question, "Has a question"),
+    (Line::Finished, "Finished"),
+    (Line::Error, "Something went wrong"),
+    (Line::CommandAnswer, "Command Mode answers"),
+];
+
+/// The on/off switch behind a spoken moment, if it has one (the stop sound and still-working
+/// interval have their own menus).
+fn line_switch(v: &mut VoiceSettings, line: Line) -> Option<&mut bool> {
+    match line {
+        Line::Sent => Some(&mut v.say_sent),
+        Line::NewChat => Some(&mut v.say_new_chat),
+        Line::Working => Some(&mut v.say_working),
+        Line::NeedsOk => Some(&mut v.say_needs_ok),
+        Line::Question => Some(&mut v.say_question),
+        Line::Finished => Some(&mut v.say_finished),
+        Line::Error => Some(&mut v.say_errors),
+        Line::CommandAnswer => Some(&mut v.say_command_answers),
+        Line::Stop | Line::StillWorking => None,
+    }
+}
+
+fn stop_sound_label(s: StopSound) -> &'static str {
+    match s {
+        StopSound::Beep => "Beep",
+        StopSound::Voice => "Voice",
+        StopSound::Off => "Off",
+    }
+}
+
+fn still_working_label(minutes: u32) -> &'static str {
+    match minutes {
+        0 => "Never",
+        1 => "Every 1 min",
+        2 => "Every 2 min",
+        _ => "Every 5 min",
+    }
+}
+
+fn address_label(address: &str) -> &str {
+    match address {
+        "" => "nothing",
+        a => a,
+    }
+}
+
+impl SettingsApp {
+    pub(super) fn voice_page(&mut self, ui: &mut egui::Ui) {
+        page_header(ui, "Voice", "me-voice talks back: it tells you what's happening and you answer by voice. Everything runs on this PC.");
+        let v = &mut self.edit.voice;
+        let is_installed = installed();
+
+        group(ui, |ui| {
+            setting_row(ui, "Kokoro · Heart", "Kokoro-82M, full quality (fp32) · 310 MB · on this PC", |ui| {
+                if is_installed {
+                    ui.label(egui::RichText::new("Ready").size(11.0).color(OK));
+                } else {
+                    ui.label(egui::RichText::new("Not downloaded").size(11.0).weak());
+                }
+            });
+            setting_row(ui, "Test", "Says a short sentence with the settings below.", |ui| {
+                let test = egui::Button::new("▶ Test voice");
+                if ui.add_enabled(is_installed, test).clicked() {
+                    let text = fill("Good morning{a}. Voice is ready.", &v.address);
+                    say(text, v.clone());
+                }
+            });
+            setting_row(ui, "Talk back", "Turn all spoken lines on or off. Beeps still follow Behaviour → Sounds.", |ui| {
+                toggle(ui, &mut v.talk_back);
+            });
+            setting_row(ui, "Voice", "American English. More voices can be added later.", |ui| {
+                egui::ComboBox::from_id_salt("voice-name")
+                    .selected_text(v.voice.as_str())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut v.voice, "af_heart".to_string(), "Heart (af_heart)");
+                    });
+            });
+            setting_row(ui, "Speed", "", |ui| {
+                ui.add(egui::Slider::new(&mut v.speed, 0.5..=2.0).suffix("×").fixed_decimals(1));
+            });
+            setting_row(ui, "Volume", "", |ui| {
+                ui.add(egui::Slider::new(&mut v.volume, 0.0..=1.0).custom_formatter(|n, _| format!("{:.0}%", n * 100.0)));
+            });
+            setting_row(ui, "Call me", "How it addresses you. Type a name to use that instead.", |ui| {
+                ui.horizontal(|ui| {
+                    egui::ComboBox::from_id_salt("voice-address")
+                        .selected_text(address_label(&v.address))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut v.address, "sir".to_string(), "sir");
+                            ui.selectable_value(&mut v.address, "ma'am".to_string(), "ma'am");
+                            ui.selectable_value(&mut v.address, String::new(), "nothing");
+                        });
+                    crate::ui::text_menu::add(ui, egui::TextEdit::singleline(&mut v.address).desired_width(110.0));
+                });
+            });
+        });
+
+        let talk_back = v.talk_back;
+        ui.add_enabled_ui(talk_back, |ui| {
+            theme::section_label(ui, "SAY OUT LOUD WHEN…");
+            group(ui, |ui| {
+                for (line, title) in LINES {
+                    let example = format!("\"{}\"", fill(line.variants()[0], &v.address));
+                    setting_row(ui, title, &example, |ui| {
+                        ui.horizontal(|ui| {
+                            match line {
+                                Line::Stop => {
+                                    egui::ComboBox::from_id_salt("stop-sound")
+                                        .selected_text(stop_sound_label(v.stop_sound))
+                                        .show_ui(ui, |ui| {
+                                            for s in [StopSound::Beep, StopSound::Voice, StopSound::Off] {
+                                                ui.selectable_value(&mut v.stop_sound, s, stop_sound_label(s));
+                                            }
+                                        });
+                                }
+                                Line::StillWorking => {
+                                    egui::ComboBox::from_id_salt("still-working")
+                                        .selected_text(still_working_label(v.say_still_working_minutes))
+                                        .show_ui(ui, |ui| {
+                                            for m in [0, 1, 2, 5] {
+                                                ui.selectable_value(&mut v.say_still_working_minutes, m, still_working_label(m));
+                                            }
+                                        });
+                                }
+                                _ => {
+                                    if let Some(on) = line_switch(v, line) {
+                                        toggle(ui, on);
+                                    }
+                                }
+                            }
+                            if ui.small_button("▶").on_hover_text("Play").clicked() {
+                                say(line.text(v), v.clone());
+                            }
+                        });
+                    });
+                }
+            });
+
+            theme::section_label(ui, "YOU CAN SAY");
+            group(ui, |ui| {
+                setting_row(ui, "yes / allow it", "Approve what it asked", |ui| {
+                    toggle(ui, &mut v.cmd_yes);
+                });
+                setting_row(ui, "no / deny", "Decline", |ui| {
+                    toggle(ui, &mut v.cmd_no);
+                });
+                setting_row(ui, "read it / summary", "Read the answer (short)", |ui| {
+                    toggle(ui, &mut v.cmd_read);
+                });
+                setting_row(ui, "more", "Keep reading", |ui| {
+                    toggle(ui, &mut v.cmd_more);
+                });
+                setting_row(ui, "repeat", "Say the last line again", |ui| {
+                    toggle(ui, &mut v.cmd_repeat);
+                });
+                setting_row(ui, "stop / quiet", "Stop talking now", |ui| {
+                    toggle(ui, &mut v.cmd_stop);
+                });
+                setting_row(ui, "status", "\"What's it doing?\"", |ui| {
+                    toggle(ui, &mut v.cmd_status);
+                });
+                setting_row(ui, "that's all", "End the conversation", |ui| {
+                    toggle(ui, &mut v.cmd_end);
+                });
+                setting_row(ui, "Anything else", "Is sent as your next message to the same T3 thread.", |ui| {
+                    toggle(ui, &mut v.cmd_other);
+                });
+            });
+
+            theme::section_label(ui, "CONVERSATION");
+            group(ui, |ui| {
+                setting_row(ui, "Listen after speaking", "After a question or \"Finished\", it listens for your answer.", |ui| {
+                    toggle(ui, &mut v.listen_after_speaking);
+                });
+                setting_row(ui, "Wait for an answer", "", |ui| {
+                    ui.add(egui::Slider::new(&mut v.answer_wait_seconds, 2..=20).suffix(" s"));
+                });
+                setting_row(ui, "Interrupt by talking", "Start speaking or press the shortcut to cut it off.", |ui| {
+                    toggle(ui, &mut v.interrupt_by_talking);
+                });
+            });
+        });
+
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(
+                "Coming soon: the T3 progress lines (Agent is working, Still working, Needs your OK, Has a question, Finished), \
+                 YOU CAN SAY and CONVERSATION are not wired up yet.",
+            )
+            .size(12.0)
+            .weak(),
+        );
+        ui.label(egui::RichText::new("Kokoro and its files stay on this PC. Nothing you hear is generated online.").size(12.0).weak());
+    }
+}

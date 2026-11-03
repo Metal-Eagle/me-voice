@@ -96,8 +96,8 @@ pub struct Settings {
     /// Minutes of idle time before the model is unloaded. 0 = right away, negative = never.
     pub unload_after_minutes: i64,
     pub sounds: bool,
-    /// Stop sound: a short spoken line (Kokoro, Heart voice) instead of the falling beep.
-    pub voice_stop_sound: bool,
+    /// Talk back: the Kokoro voice, what it says and what you can say back (Voice page).
+    pub voice: VoiceSettings,
     /// Save the text of each dictation in the History page (numbers are always kept).
     pub keep_history: bool,
     /// Your typing speed, used for "time saved" on the dashboard.
@@ -196,7 +196,7 @@ impl Default for Settings {
             insert_mode: InsertMode::Paste,
             unload_after_minutes: 5,
             sounds: true,
-            voice_stop_sound: false,
+            voice: VoiceSettings::default(),
             keep_history: true,
             typing_wpm: 40,
             start_at_login: false,
@@ -343,5 +343,87 @@ mod tests {
         let json = serde_json::to_string(&ShortcutAction::DictateToT3).unwrap();
         assert_eq!(json, "{\"type\":\"dictateToT3\"}");
         assert_eq!(serde_json::from_str::<ShortcutAction>(&json).unwrap(), ShortcutAction::DictateToT3);
+    }
+}
+
+/// What plays when listening stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StopSound {
+    Beep,
+    Voice,
+    Off,
+}
+
+/// The Voice page: Kokoro talks back. Every spoken moment and every answer you can give has its
+/// own switch. Nothing is spoken until `talk_back` is on, and the stop sound stays the beep.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct VoiceSettings {
+    pub talk_back: bool,
+    /// Kokoro voice id, e.g. `af_heart`.
+    pub voice: String,
+    pub speed: f32,
+    /// 0.0 to 1.0.
+    pub volume: f32,
+    /// How it addresses you: "sir", "ma'am", a name, or empty for nothing.
+    pub address: String,
+    pub stop_sound: StopSound,
+    pub say_sent: bool,
+    pub say_new_chat: bool,
+    pub say_working: bool,
+    /// Minutes between "still working" lines; 0 = never.
+    pub say_still_working_minutes: u32,
+    pub say_needs_ok: bool,
+    pub say_question: bool,
+    pub say_finished: bool,
+    pub say_errors: bool,
+    pub say_command_answers: bool,
+    pub cmd_yes: bool,
+    pub cmd_no: bool,
+    pub cmd_read: bool,
+    pub cmd_more: bool,
+    pub cmd_repeat: bool,
+    pub cmd_stop: bool,
+    pub cmd_status: bool,
+    pub cmd_end: bool,
+    /// Anything else you say is sent as the next message to the same T3 thread.
+    pub cmd_other: bool,
+    pub listen_after_speaking: bool,
+    pub answer_wait_seconds: u32,
+    pub interrupt_by_talking: bool,
+}
+
+impl Default for VoiceSettings {
+    fn default() -> Self {
+        Self {
+            talk_back: false,
+            voice: "af_heart".into(),
+            speed: 1.0,
+            volume: 0.7,
+            address: "sir".into(),
+            stop_sound: StopSound::Beep,
+            say_sent: true,
+            say_new_chat: true,
+            say_working: true,
+            say_still_working_minutes: 2,
+            say_needs_ok: true,
+            say_question: true,
+            say_finished: true,
+            say_errors: true,
+            say_command_answers: false,
+            cmd_yes: true,
+            cmd_no: true,
+            cmd_read: true,
+            cmd_more: true,
+            cmd_repeat: true,
+            cmd_stop: true,
+            cmd_status: true,
+            cmd_end: true,
+            cmd_other: true,
+            listen_after_speaking: true,
+            answer_wait_seconds: 6,
+            interrupt_by_talking: true,
+        }
     }
 }

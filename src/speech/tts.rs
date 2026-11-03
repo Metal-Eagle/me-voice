@@ -265,64 +265,135 @@ pub fn say_blocking(text: &str) -> Result<()> {
     crate::speech::sound::play_samples_blocking(&samples, SAMPLE_RATE)
 }
 
-/// One loaded Kokoro, shared, so the second phrase doesn't wait for the model to load again.
-static ENGINE: std::sync::Mutex<Option<Kokoro>> = std::sync::Mutex::new(None);
-/// Rendered phrases, so the fixed lines play instantly after the first time.
-static CACHE: std::sync::Mutex<Option<HashMap<String, Vec<f32>>>> = std::sync::Mutex::new(None);
+/// One loaded Kokoro (and which voice it has), shared, so later lines don't wait for loading.
+static ENGINE: std::sync::Mutex<Option<(String, Kokoro)>> = std::sync::Mutex::new(None);
+/// Rendered lines by voice, speed and text, so fixed lines play instantly after the first time.
+static CACHE: std::sync::Mutex<Option<HashMap<String, std::sync::Arc<Vec<f32>>>>> = std::sync::Mutex::new(None);
 
-/// What the voice says when listening stops; one picked at random.
-pub const STOP_PHRASES: &[&str] = &["Got it.", "Very good.", "On it.", "Got it, sir.", "Right away."];
+/// The moments me-voice can talk about (one switch each on the Voice page).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Line {
+    Stop,
+    Sent,
+    NewChat,
+    Working,
+    StillWorking,
+    NeedsOk,
+    Question,
+    Finished,
+    Error,
+    CommandAnswer,
+}
 
-/// Says one of the stop lines on a background thread; plays the beep instead if that fails.
-pub fn speak_stop() {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
-    let phrase = STOP_PHRASES[nanos as usize % STOP_PHRASES.len()];
+impl Line {
+    /// The variants it picks from at random. `{a}` becomes ", sir" (or nothing).
+    pub fn variants(self) -> &'static [&'static str] {
+        match self {
+            Line::Stop => &["Got it{a}.", "Very good.", "On it.", "Right away{a}."],
+            Line::Sent => &["Sent{a}.", "Passed along.", "It's on its way."],
+            Line::NewChat => &["New session started in T3 Code."],
+            Line::Working => &["Working on it.", "The agent's on it now."],
+            Line::StillWorking => &["Still at it{a}.", "Bear with it. Still working."],
+            Line::NeedsOk => &["It's asking to run a command. Shall I allow it?"],
+            Line::Question => &["It has a question for you{a}."],
+            Line::Finished => &["Finished{a}. Shall I read you the summary?"],
+            Line::Error => &["I'm afraid T3 Code isn't running.", "That didn't go through{a}."],
+            Line::CommandAnswer => &["Here's the answer{a}."],
+        }
+    }
+
+    /// Whether this moment is switched on.
+    pub fn enabled(self, v: &crate::settings::VoiceSettings) -> bool {
+        v.talk_back
+            && match self {
+                Line::Stop => v.stop_sound == crate::settings::StopSound::Voice,
+                Line::Sent => v.say_sent,
+                Line::NewChat => v.say_new_chat,
+                Line::Working => v.say_working,
+                Line::StillWorking => v.say_still_working_minutes > 0,
+                Line::NeedsOk => v.say_needs_ok,
+                Line::Question => v.say_question,
+                Line::Finished => v.say_finished,
+                Line::Error => v.say_errors,
+                Line::CommandAnswer => v.say_command_answers,
+            }
+    }
+
+    /// One variant, picked at random, with the form of address filled in.
+    pub fn text(self, v: &crate::settings::VoiceSettings) -> String {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
+        let list = self.variants();
+        fill(list[nanos as usize % list.len()], &v.address)
+    }
+}
+
+/// Fills `{a}` with ", sir" / ", Jeroen", or nothing when no address is set.
+pub fn fill(template: &str, address: &str) -> String {
+    let a = address.trim();
+    template.replace("{a}", &if a.is_empty() { String::new() } else { format!(", {a}") })
+}
+
+/// Says `line` on a background thread if it's switched on. Returns false when it's off or
+/// Kokoro isn't there, so the caller can play a beep instead.
+pub fn announce(line: Line, v: &crate::settings::VoiceSettings) -> bool {
+    if !line.enabled(v) || !installed() {
+        return false;
+    }
+    say(line.text(v), v.clone());
+    true
+}
+
+/// Speaks any text on a background thread (Test voice, ▶ buttons, announcements). Plays the
+/// stop beep instead if Kokoro fails.
+pub fn say(text: String, v: crate::settings::VoiceSettings) {
     std::thread::spawn(move || {
-        if let Err(e) = speak_phrase(phrase) {
-            crate::app::log::write(&format!("spoken stop sound: {e:#}"));
+        if let Err(e) = speak_blocking(&text, &v) {
+            crate::app::log::write(&format!("voice: {e:#}"));
             crate::speech::sound::play(crate::speech::sound::Beep::Stop);
         }
     });
 }
 
-/// Renders a phrase (cached) and plays it. Call from a background thread.
-pub fn speak_phrase(text: &str) -> Result<()> {
-    let cached = CACHE.lock().unwrap().as_ref().and_then(|c| c.get(text).cloned());
-    let samples = match cached {
-        Some(s) => s,
-        None => {
-            let samples = render(text)?;
-            CACHE.lock().unwrap().get_or_insert_with(HashMap::new).insert(text.to_string(), samples.clone());
-            samples
-        }
-    };
-    crate::speech::sound::play_samples_blocking(&samples, SAMPLE_RATE)
+/// Renders (cached) and plays `text` with the voice, speed and volume from the settings.
+pub fn speak_blocking(text: &str, v: &crate::settings::VoiceSettings) -> Result<()> {
+    let samples = rendered(text, v)?;
+    // 70 % (the default) is the model's own level.
+    let gain = v.volume.clamp(0.0, 1.0) / 0.7;
+    let scaled: Vec<f32> = samples.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect();
+    crate::speech::sound::play_samples_blocking(&scaled, SAMPLE_RATE)
 }
 
-/// Loads the model if needed and renders the phrases, so the first one plays without delay.
-pub fn warm_up(phrases: &[&str]) {
-    for p in phrases {
-        if CACHE.lock().unwrap().as_ref().is_some_and(|c| c.contains_key(*p)) {
-            continue;
-        }
-        match render(p) {
-            Ok(s) => {
-                CACHE.lock().unwrap().get_or_insert_with(HashMap::new).insert(p.to_string(), s);
-            }
-            Err(e) => {
-                crate::app::log::write(&format!("kokoro warm-up: {e:#}"));
+/// Loads the model and renders the switched-on short lines, so they play instantly.
+pub fn warm_up(v: &crate::settings::VoiceSettings) {
+    if !v.talk_back || !installed() {
+        return;
+    }
+    let lines = [Line::Stop, Line::Sent, Line::NewChat, Line::Error];
+    for line in lines.into_iter().filter(|l| l.enabled(v)) {
+        for t in line.variants() {
+            if let Err(e) = rendered(&fill(t, &v.address), v) {
+                crate::app::log::write(&format!("voice warm-up: {e:#}"));
                 return;
             }
         }
     }
 }
 
-fn render(text: &str) -> Result<Vec<f32>> {
-    let mut engine = ENGINE.lock().unwrap();
-    if engine.is_none() {
-        *engine = Some(Kokoro::load(&dir(), DEFAULT_VOICE)?);
+fn rendered(text: &str, v: &crate::settings::VoiceSettings) -> Result<std::sync::Arc<Vec<f32>>> {
+    let voice = if v.voice.is_empty() { DEFAULT_VOICE } else { v.voice.as_str() };
+    let key = format!("{voice}|{:.2}|{text}", v.speed);
+    if let Some(s) = CACHE.lock().unwrap().as_ref().and_then(|c| c.get(&key).cloned()) {
+        return Ok(s);
     }
-    engine.as_mut().unwrap().synthesize(text, 1.0)
+    let samples = {
+        let mut engine = ENGINE.lock().unwrap();
+        if engine.as_ref().is_none_or(|(id, _)| id != voice) {
+            *engine = Some((voice.to_string(), Kokoro::load(&dir(), voice)?));
+        }
+        std::sync::Arc::new(engine.as_mut().unwrap().1.synthesize(text, v.speed.clamp(0.5, 2.0))?)
+    };
+    CACHE.lock().unwrap().get_or_insert_with(HashMap::new).insert(key, samples.clone());
+    Ok(samples)
 }
 
 #[cfg(test)]

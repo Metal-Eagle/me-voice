@@ -486,7 +486,7 @@ impl App {
                 let target = self.t3_target();
                 self.end_t3_choice();
                 self.show_result_until = Some(Instant::now() + SHOW_RESULT);
-                send_text(text, InsertMode::T3, false, target);
+                send_text(text, InsertMode::T3, false, target, self.active.voice.clone());
             }
         }
     }
@@ -688,10 +688,9 @@ impl App {
                 self.set_cancel_key(true);
                 self.set_digit_keys(true);
                 if self.active.sounds {
-                    if self.active.voice_stop_sound && crate::speech::tts::installed() {
-                        // Load Kokoro and render the lines while you talk, so stopping plays instantly.
-                        std::thread::spawn(|| crate::speech::tts::warm_up(crate::speech::tts::STOP_PHRASES));
-                    }
+                    // Load Kokoro and render the lines while you talk, so they play instantly.
+                    let voice = self.active.voice.clone();
+                    std::thread::spawn(move || crate::speech::tts::warm_up(&voice));
                     sound::play(Beep::Start);
                 }
                 log::write("listening");
@@ -729,10 +728,10 @@ impl App {
             samples
         };
         if self.active.sounds {
-            if self.active.voice_stop_sound && crate::speech::tts::installed() {
-                crate::speech::tts::speak_stop();
-            } else {
-                sound::play(Beep::Stop);
+            match self.active.voice.stop_sound {
+                crate::settings::StopSound::Off => {}
+                crate::settings::StopSound::Voice if crate::speech::tts::announce(crate::speech::tts::Line::Stop, &self.active.voice) => {}
+                _ => sound::play(Beep::Stop),
             }
         }
         if samples.len() < SAMPLE_RATE * MIN_CLIP.as_millis() as usize / 1000 {
@@ -808,7 +807,7 @@ impl App {
                 } else {
                     self.end_t3_choice();
                     self.show_result_until = Some(Instant::now() + SHOW_RESULT);
-                    send_text(text, self.active.insert_mode, press_enter, self.t3_target());
+                    send_text(text, self.active.insert_mode, press_enter, self.t3_target(), self.active.voice.clone());
                 }
             }
             Err(e) => {
@@ -1200,13 +1199,26 @@ mod tests {
 /// Inserts the text on its own thread: pasting waits for keys to be released and for the
 /// target app, and the event loop (the card) must keep running meanwhile.
 /// ME_VOICE_NO_INSERT=1: don't paste (stress tests must not type into other windows).
-fn send_text(text: String, mode: InsertMode, press_enter: bool, t3_target: Option<apps::T3Target>) {
+/// For T3 Code it then says "Sent" / "New session started", or the error line when it failed.
+fn send_text(text: String, mode: InsertMode, press_enter: bool, t3_target: Option<apps::T3Target>, voice: crate::settings::VoiceSettings) {
     if std::env::var("ME_VOICE_NO_INSERT").as_deref() == Ok("1") {
         return;
     }
     std::thread::spawn(move || {
-        if let Err(e) = insert::insert_to(&text, mode, press_enter, t3_target.as_ref()) {
+        use crate::speech::tts::{announce, Line};
+        let result = insert::insert_to(&text, mode, press_enter, t3_target.as_ref());
+        if let Err(e) = &result {
             log::write(&e.to_string());
+        }
+        if mode == InsertMode::T3 && !text.is_empty() {
+            let line = match (result, &t3_target) {
+                (Ok(true), Some(apps::T3Target::NewThread(_))) => Line::NewChat,
+                (Ok(true), _) => Line::Sent,
+                _ => Line::Error,
+            };
+            // Let the stop line finish first.
+            std::thread::sleep(std::time::Duration::from_millis(900));
+            announce(line, &voice);
         }
     });
 }
