@@ -688,6 +688,10 @@ impl App {
                 self.set_cancel_key(true);
                 self.set_digit_keys(true);
                 if self.active.sounds {
+                    if self.active.voice_stop_sound && crate::speech::tts::installed() {
+                        // Load Kokoro and render the lines while you talk, so stopping plays instantly.
+                        std::thread::spawn(|| crate::speech::tts::warm_up(crate::speech::tts::STOP_PHRASES));
+                    }
                     sound::play(Beep::Start);
                 }
                 log::write("listening");
@@ -725,7 +729,11 @@ impl App {
             samples
         };
         if self.active.sounds {
-            sound::play(Beep::Stop);
+            if self.active.voice_stop_sound && crate::speech::tts::installed() {
+                crate::speech::tts::speak_stop();
+            } else {
+                sound::play(Beep::Stop);
+            }
         }
         if samples.len() < SAMPLE_RATE * MIN_CLIP.as_millis() as usize / 1000 {
             self.warm = None;

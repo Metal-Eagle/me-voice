@@ -3,4 +3,5 @@
 pub mod audio;
 pub mod models;
 pub mod sound;
+pub mod tts;
 pub mod transcriber;

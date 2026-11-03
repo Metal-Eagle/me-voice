@@ -52,16 +52,10 @@ fn notes(beep: Beep) -> &'static [Note] {
 }
 
 fn play_blocking(beep: Beep) -> anyhow::Result<()> {
-    let device = cpal::default_host()
-        .default_output_device()
-        .ok_or_else(|| anyhow::anyhow!("no audio output"))?;
-    let supported = device.default_output_config()?;
-    let rate = supported.sample_rate() as f32;
-    let channels = supported.channels() as usize;
+    play_generated(move |rate| {
     let lead = (LEAD_IN * rate) as usize;
     let list = notes(beep);
     let total = lead + list.iter().map(|n| (n.length * rate) as usize).sum::<usize>();
-    let pos = Arc::new(AtomicUsize::new(0));
 
     let sample = move |i: usize| -> f32 {
         if i < lead || i >= total {
@@ -81,12 +75,53 @@ fn play_blocking(beep: Beep) -> anyhow::Result<()> {
         }
         0.0
     };
+    (sample, total)
+    })
+}
+
+/// Plays mono samples recorded at `from_rate` (e.g. 24 kHz speech), resampled to the output.
+pub fn play_samples_blocking(samples: &[f32], from_rate: u32) -> anyhow::Result<()> {
+    let samples: Arc<[f32]> = samples.into();
+    play_generated(move |rate| {
+        let lead = (LEAD_IN * rate) as usize;
+        let step = from_rate as f32 / rate;
+        let total = lead + (samples.len() as f32 / step) as usize;
+        let sample = move |i: usize| -> f32 {
+            if i < lead || i >= total {
+                return 0.0;
+            }
+            let x = (i - lead) as f32 * step;
+            let j = x as usize;
+            let f = x - j as f32;
+            let a = samples.get(j).copied().unwrap_or(0.0);
+            let b = samples.get(j + 1).copied().unwrap_or(a);
+            a + (b - a) * f
+        };
+        (sample, total)
+    })
+}
+
+/// Opens the default output and plays `sample(i)` for `total` frames. `make` gets the device's
+/// sample rate and returns the sample function and the length in frames.
+fn play_generated<F>(make: impl FnOnce(f32) -> (F, usize)) -> anyhow::Result<()>
+where
+    F: Fn(usize) -> f32 + Send + Sync + Clone + 'static,
+{
+    let device = cpal::default_host()
+        .default_output_device()
+        .ok_or_else(|| anyhow::anyhow!("no audio output"))?;
+    let supported = device.default_output_config()?;
+    let rate = supported.sample_rate() as f32;
+    let channels = supported.channels() as usize;
+    let (sample, total) = make(rate);
+    let pos = Arc::new(AtomicUsize::new(0));
 
     let config = supported.config();
     let on_error = |e: cpal::Error| crate::app::log::write(&format!("sound: {e}"));
     macro_rules! stream {
         ($t:ty, $convert:expr) => {{
             let p = pos.clone();
+            let sample = sample.clone();
             device.build_output_stream(
                 config,
                 move |data: &mut [$t], _: &OutputCallbackInfo| {

@@ -41,6 +41,9 @@ impl SettingsApp {
             setting_row(ui, "Sounds", "A short beep when listening starts and stops.", |ui| {
                 toggle(ui, &mut self.edit.sounds);
             });
+            setting_row(ui, "Spoken stop sound", "When listening stops, a voice says \"Got it\" instead of the beep. Uses the Kokoro voice (Heart) on this PC; falls back to the beep until it's downloaded.", |ui| {
+                ui.add_enabled_ui(self.edit.sounds, |ui| toggle(ui, &mut self.edit.voice_stop_sound));
+            });
             setting_row(ui, "Start at login", "Start me-voice when you sign in.", |ui| {
                 ui.add_enabled_ui(crate::app::login::SUPPORTED, |ui| {
                     toggle(ui, &mut self.edit.start_at_login);

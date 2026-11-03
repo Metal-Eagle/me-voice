@@ -96,6 +96,8 @@ pub struct Settings {
     /// Minutes of idle time before the model is unloaded. 0 = right away, negative = never.
     pub unload_after_minutes: i64,
     pub sounds: bool,
+    /// Stop sound: a short spoken line (Kokoro, Heart voice) instead of the falling beep.
+    pub voice_stop_sound: bool,
     /// Save the text of each dictation in the History page (numbers are always kept).
     pub keep_history: bool,
     /// Your typing speed, used for "time saved" on the dashboard.
@@ -194,6 +196,7 @@ impl Default for Settings {
             insert_mode: InsertMode::Paste,
             unload_after_minutes: 5,
             sounds: true,
+            voice_stop_sound: false,
             keep_history: true,
             typing_wpm: 40,
             start_at_login: false,

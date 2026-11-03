@@ -7,6 +7,7 @@ license = "MIT"
 [dependencies]
 ab_glyph = "0.2.32"
 anyhow = "1.0.104"
+ort = "=2.0.0-rc.12"
 arboard = "3.7.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 cpal = "0.18.2"

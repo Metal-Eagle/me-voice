@@ -57,6 +57,7 @@ fn run() -> Result<()> {
         }
         Some("write-icon") => Ok(icon::write_ico(std::path::Path::new(args.get(1).map_or("me-voice.ico", String::as_str)))?),
         Some("live-test") => live_test(args.get(1).ok_or_else(|| anyhow!("usage: me-voice live-test <file.wav>"))?),
+        Some("say") => speech::tts::say_blocking(&args[1..].join(" ")),
         Some("transcribe") => transcribe_file(args.get(1).ok_or_else(|| anyhow!("usage: me-voice transcribe <file.wav>"))?),
         Some(other) => Err(anyhow!("unknown command {other}. Use: settings | toggle | quit | microphones | transcribe <file.wav> | live-test <file.wav>")),
     }
