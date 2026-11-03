@@ -171,3 +171,45 @@ A state machine next to `dictation.rs`:
 - Speak every T3 reply, or only in conversation mode? (proposal: only in conversation mode, plus the Read-aloud shortcut)
 - Is a robotic-ish system voice fine for phase 1, or go straight to neural?
 - Should the AI first shorten long T3 replies into a spoken summary (costs an AI call), or just read the last message?
+
+## "Still working": say *which* thread, and don't nag
+
+Problem: with 4–5 T3 threads busy at once, "Still at it, sir" every 2 minutes is noise and
+doesn't tell you which one.
+
+**What it says**
+- Name the thread, short: the project name + a short thread title, e.g.
+  "me-voice, talk back: still working." Source: `projection_threads.title` and
+  `projection_projects.title` in T3's `state.sqlite` (already read in `apps.rs`).
+- Long titles are cut to the first 4–5 words; titles like "New thread" fall back to the first
+  words of your last message in that thread.
+- Several busy at once → one combined line instead of one per thread:
+  "Three threads still working: me-voice, Magister login, and the docs." (more than three:
+  "Five threads still working. Say *status* for the list.")
+- Later (optional): what it's doing right now, from the latest tool call / step in that turn:
+  "me-voice is running the tests." Only from the event name (edit file, run command, search),
+  no AI call.
+
+**When it says it**
+- Only for threads *you* sent to by voice in this session (setting: "only my voice threads" /
+  "all threads"), so threads you started by typing stay quiet.
+- Not while you're dictating or another line is playing; queued instead.
+- Back-off per thread: first after 2 min, then 5, then 10 (setting keeps "Never / 1 / 2 / 5").
+- "Finished" always names the thread: "me-voice, talk back is finished."
+- Quiet while the T3 window shows that thread (you can see it already).
+
+**Ask instead of being told**
+- Say **"status"** → "Two threads working: me-voice and the docs. Magister login is waiting
+  for your OK." This makes a longer still-working interval (or Never) comfortable.
+
+**Settings (Voice page, Still working row)**
+- Interval: Never / Every 2 min / Every 5 min / Back off (default: Back off).
+- Threads: Only ones I sent to by voice (default) / All threads.
+- Say what it's doing: on/off (later).
+
+**Build steps**
+1. T3 watcher: per thread, turn started / still running / finished / waiting for approval.
+2. Short spoken thread name (project + title, cut, fallbacks) with tests.
+3. Combine busy threads into one line; back-off timers; skip the thread on screen.
+4. "status" voice command.
+5. (Later) current step from the turn's latest activity.

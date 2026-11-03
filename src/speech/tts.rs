@@ -270,6 +270,9 @@ static ENGINE: std::sync::Mutex<Option<(String, Kokoro)>> = std::sync::Mutex::ne
 /// Rendered lines by voice, speed and text, so fixed lines play instantly after the first time.
 static CACHE: std::sync::Mutex<Option<HashMap<String, std::sync::Arc<Vec<f32>>>>> = std::sync::Mutex::new(None);
 
+/// Held while a line plays, so lines never overlap.
+static SPEAKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// The moments me-voice can talk about (one switch each on the Voice page).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Line {
@@ -290,7 +293,7 @@ impl Line {
     pub fn variants(self) -> &'static [&'static str] {
         match self {
             Line::Stop => &["Got it{a}.", "Very good.", "On it.", "Right away{a}."],
-            Line::Sent => &["Sent{a}.", "Passed along.", "It's on its way."],
+            Line::Sent => &["Message sent{a}.", "Delivered{a}.", "It's on its way."],
             Line::NewChat => &["New session started in T3 Code."],
             Line::Working => &["Working on it.", "The agent's on it now."],
             Line::StillWorking => &["Still at it{a}.", "Bear with it. Still working."],
@@ -357,6 +360,8 @@ pub fn say(text: String, v: crate::settings::VoiceSettings) {
 /// Renders (cached) and plays `text` with the voice, speed and volume from the settings.
 pub fn speak_blocking(text: &str, v: &crate::settings::VoiceSettings) -> Result<()> {
     let samples = rendered(text, v)?;
+    // One line at a time: a later line waits for the one playing instead of talking over it.
+    let _speaking = SPEAKING.lock().unwrap_or_else(|e| e.into_inner());
     // 70 % (the default) is the model's own level.
     let gain = v.volume.clamp(0.0, 1.0) / 0.7;
     let scaled: Vec<f32> = samples.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect();

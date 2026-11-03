@@ -51,6 +51,30 @@ fn still_working_label(minutes: u32) -> &'static str {
     }
 }
 
+/// A round play button with a drawn triangle (the UI font has no ▶ glyph).
+fn play_button(ui: &mut egui::Ui, enabled: bool) -> egui::Response {
+    let sense = if enabled { egui::Sense::click() } else { egui::Sense::hover() };
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), sense);
+    let visuals = ui.style().interact(&response);
+    let fill = if response.hovered() && enabled { theme::ACCENT } else { visuals.bg_fill };
+    let ink = if !enabled {
+        ui.visuals().weak_text_color()
+    } else if response.hovered() {
+        egui::Color32::WHITE
+    } else {
+        ui.visuals().text_color()
+    };
+    let painter = ui.painter();
+    painter.circle_filled(rect.center(), 14.0, fill);
+    let c = rect.center() + egui::vec2(1.5, 0.0);
+    painter.add(egui::Shape::convex_polygon(
+        vec![c + egui::vec2(-4.0, -5.5), c + egui::vec2(5.5, 0.0), c + egui::vec2(-4.0, 5.5)],
+        ink,
+        egui::Stroke::NONE,
+    ));
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 fn address_label(address: &str) -> &str {
     match address {
         "" => "nothing",
@@ -73,8 +97,7 @@ impl SettingsApp {
                 }
             });
             setting_row(ui, "Test", "Says a short sentence with the settings below.", |ui| {
-                let test = egui::Button::new("▶ Test voice");
-                if ui.add_enabled(is_installed, test).clicked() {
+                if play_button(ui, is_installed).on_hover_text("Test voice").clicked() {
                     let text = fill("Good morning{a}. Voice is ready.", &v.address);
                     say(text, v.clone());
                 }
@@ -84,9 +107,9 @@ impl SettingsApp {
             });
             setting_row(ui, "Voice", "American English. More voices can be added later.", |ui| {
                 egui::ComboBox::from_id_salt("voice-name")
-                    .selected_text(v.voice.as_str())
+                    .selected_text(if v.voice == "af_heart" { "Heart" } else { v.voice.as_str() })
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut v.voice, "af_heart".to_string(), "Heart (af_heart)");
+                        ui.selectable_value(&mut v.voice, "af_heart".to_string(), "Heart");
                     });
             });
             setting_row(ui, "Speed", "", |ui| {
@@ -116,7 +139,12 @@ impl SettingsApp {
                 for (line, title) in LINES {
                     let example = format!("\"{}\"", fill(line.variants()[0], &v.address));
                     setting_row(ui, title, &example, |ui| {
-                        ui.horizontal(|ui| {
+                        {
+                            // Right to left: the play button first, so they line up in one column.
+                            if play_button(ui, is_installed).on_hover_text("Play").clicked() {
+                                say(line.text(v), v.clone());
+                            }
+                            ui.add_space(6.0);
                             match line {
                                 Line::Stop => {
                                     egui::ComboBox::from_id_salt("stop-sound")
@@ -142,10 +170,7 @@ impl SettingsApp {
                                     }
                                 }
                             }
-                            if ui.small_button("▶").on_hover_text("Play").clicked() {
-                                say(line.text(v), v.clone());
-                            }
-                        });
+                        }
                     });
                 }
             });

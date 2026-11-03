@@ -315,6 +315,9 @@ pub fn run() -> Result<()> {
 impl App {
     fn new(proxy: EventLoopProxy<UserEvent>) -> Result<Self> {
         let settings = Settings::load();
+        // Load the voice in the background now, so the first spoken line doesn't wait for it.
+        let voice = settings.voice.clone();
+        std::thread::spawn(move || crate::speech::tts::warm_up(&voice));
         let mut app = Self {
             active: settings.clone(),
             settings,
@@ -606,6 +609,8 @@ impl App {
                 let old_model = self.settings.model_id.clone();
                 self.settings = Settings::load();
                 self.hotkeys_dirty = true;
+                let voice = self.settings.voice.clone();
+                std::thread::spawn(move || crate::speech::tts::warm_up(&voice));
                 if self.settings.model_id != old_model && matches!(self.state, State::Idle) {
                     self.transcriber.lock().unwrap().unload();
                 }
@@ -1216,8 +1221,7 @@ fn send_text(text: String, mode: InsertMode, press_enter: bool, t3_target: Optio
                 (Ok(true), _) => Line::Sent,
                 _ => Line::Error,
             };
-            // Let the stop line finish first.
-            std::thread::sleep(std::time::Duration::from_millis(900));
+            // Plays after the stop line: lines wait for each other.
             announce(line, &voice);
         }
     });
