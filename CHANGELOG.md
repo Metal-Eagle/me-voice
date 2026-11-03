@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0 - 2026-11-03
+
+- New: **me-voice talks back.** It uses Kokoro (Heart voice, full quality), running on this PC, to tell you what's happening. Everything is set up on the new **Voice** page: voice, speed, volume, how it addresses you ("sir", "ma'am" or a name you type), and a switch and play button for every line it can say.
+- New: after you dictate to T3 Code, it says "Message sent" or "New session started". It then follows that thread and says when the agent is working, still working (named per thread, every 1, 2 or 5 minutes, or never), needs your OK, has a question (read out), is finished, or ran into an error.
+- New: after a question or "Finished" it listens for a short answer. "Yes" or "read it" reads the answer in short pieces, "more" goes on, "repeat", "stop", "status" (which threads are busy) and "no" or "that's all" do what they say. Anything else is sent as your next message to the same thread. Pressing the shortcut while it talks cuts it off.
+- New: an optional spoken stop sound ("Got it, sir.") instead of the beep, under Voice → Listening stops.
+- Note: approving a T3 request by voice isn't possible, because T3 Code has no way for another program to do it. Approve in T3 Code.
+
 ## 1.7.0 - 2026-10-28
 
 - Fixed: dictating inside T3 Code now picks the thread you are looking at, read from T3's window, instead of the one you opened first. A thread that isn't among the recent ones is added to the top of the card. If T3's window doesn't say which thread it shows, nothing is picked and the card waits for a number key.
