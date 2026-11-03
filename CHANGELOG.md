@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.1 - 2026-11-03
+
+- Fixed: words Kokoro doesn't know are sounded out as words instead of spelled letter by letter. Only short all-caps abbreviations (GPT) and letters mixed with digits (T3) are still spelled.
+
 ## 2.0.0 - 2026-11-03
 
 - New: **me-voice talks back.** It uses Kokoro (Heart voice, full quality), running on this PC, to tell you what's happening. Everything is set up on the new **Voice** page: voice, speed, volume, how it addresses you ("sir", "ma'am" or a name you type), and a switch and play button for every line it can say.

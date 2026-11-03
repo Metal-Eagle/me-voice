@@ -172,7 +172,22 @@ impl Lexicon {
         if let Some(p) = self.inflected(word) {
             return p;
         }
-        // Letters and digits mixed (T3, GPT): say them one by one.
+        // Acronyms and letters mixed with digits (T3, GPT): say them one by one.
+        let letters = word.chars().filter(|c| c.is_alphabetic()).count();
+        let acronym = word.chars().any(|c| c.is_ascii_digit())
+            || (letters <= 5 && letters > 1 && word.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_uppercase()))
+            || letters == 1;
+        if acronym {
+            return self.spell(word);
+        }
+        if let Some(p) = self.compound(&word.to_lowercase()) {
+            return p;
+        }
+        // Anything else is a word: sound it out instead of spelling it.
+        sound_out(&word.to_lowercase())
+    }
+
+    fn spell(&self, word: &str) -> String {
         word.chars()
             .filter(|c| c.is_alphanumeric())
             .map(|c| {
@@ -185,6 +200,27 @@ impl Lexicon {
             })
             .collect::<Vec<_>>()
             .join(" ")
+    }
+
+    fn known(&self, w: &str) -> Option<String> {
+        if w.len() < 2 {
+            return None;
+        }
+        self.lookup(w).or_else(|| self.inflected(w))
+    }
+
+    /// Two known words glued together ("codebase", "unrendered" = un + rendered).
+    fn compound(&self, lower: &str) -> Option<String> {
+        if !lower.is_ascii() {
+            return None;
+        }
+        for i in (2..lower.len().saturating_sub(1)).rev() {
+            let (a, b) = lower.split_at(i);
+            if let (Some(pa), Some(pb)) = (self.known(a), self.known(b)) {
+                return Some(format!("{pa}{}", pb.replace('ˈ', "ˌ")));
+            }
+        }
+        None
     }
 
     /// A known word plus -s, -'s, -ed or -ing ("delivered" from "deliver"), so words missing
@@ -269,6 +305,69 @@ impl Lexicon {
         flush(&mut word, &mut out);
         out
     }
+}
+
+/// Rough English letter-to-sound rules for words the dictionary doesn't know.
+fn sound_out(word: &str) -> String {
+    const RULES: &[(&str, &str)] = &[
+        ("tion", "ʃən"), ("sion", "ʒən"), ("ture", "ʧɚ"), ("ough", "ʌf"), ("igh", "aɪ"), ("tch", "ʧ"),
+        ("sch", "sk"), ("ch", "ʧ"), ("sh", "ʃ"), ("th", "θ"), ("ph", "f"), ("wh", "w"), ("ck", "k"),
+        ("ng", "ŋ"), ("qu", "kw"), ("gh", ""), ("kn", "n"), ("wr", "ɹ"), ("ee", "i"), ("ea", "i"),
+        ("oo", "u"), ("ou", "aʊ"), ("ow", "oʊ"), ("oi", "ɔɪ"), ("oy", "ɔɪ"), ("ai", "eɪ"), ("ay", "eɪ"),
+        ("au", "ɔ"), ("aw", "ɔ"), ("ie", "i"), ("ei", "eɪ"), ("ey", "i"), ("oa", "oʊ"), ("er", "ɚ"),
+        ("ir", "ɜɹ"), ("ur", "ɜɹ"), ("ar", "ɑɹ"), ("or", "ɔɹ"), ("ew", "ju"),
+    ];
+    let b: Vec<char> = word.chars().filter(|c| c.is_ascii_alphabetic()).collect();
+    let s: String = b.iter().collect();
+    let vowel = |c: char| "aeiouy".contains(c);
+    let mut out = String::new();
+    let mut stressed = false;
+    let mut i = 0;
+    while i < b.len() {
+        let rest = &s[i..];
+        if let Some((g, p)) = RULES.iter().find(|(g, _)| rest.starts_with(g)) {
+            if !stressed && p.chars().any(|c| "iuaeɪɔɚɜɑoʊ".contains(c)) {
+                out.push('ˈ');
+                stressed = true;
+            }
+            out.push_str(p);
+            i += g.len();
+            continue;
+        }
+        let c = b[i];
+        let next = b.get(i + 1).copied();
+        // Magic e: vowel + consonant + final e.
+        let magic = vowel(c) && c != 'y' && i + 2 == b.len() - 1 && b[b.len() - 1] == 'e' && next.is_some_and(|n| !vowel(n));
+        let p: &str = match c {
+            'a' => if magic { "eɪ" } else { "æ" },
+            'e' => if i == b.len() - 1 && i > 0 { "" } else if magic { "i" } else { "ɛ" },
+            'i' => if magic { "aɪ" } else { "ɪ" },
+            'o' => if magic { "oʊ" } else { "ɑ" },
+            'u' => if magic { "u" } else { "ʌ" },
+            'y' => if i == 0 { "j" } else if i == b.len() - 1 { "i" } else { "ɪ" },
+            'c' => if next.is_some_and(|n| "eiy".contains(n)) { "s" } else { "k" },
+            'g' => if next.is_some_and(|n| "eiy".contains(n)) && i > 0 { "ʤ" } else { "ɡ" },
+            'j' => "ʤ",
+            'r' => "ɹ",
+            'x' => "ks",
+            'q' => "k",
+            _ => "",
+        };
+        if !stressed && vowel(c) && !p.is_empty() {
+            out.push('ˈ');
+            stressed = true;
+        }
+        if p.is_empty() && !vowel(c) {
+            // Plain consonant, skip doubled ones (ll, tt).
+            if i == 0 || b[i - 1] != c {
+                out.push(c);
+            }
+        } else {
+            out.push_str(p);
+        }
+        i += 1;
+    }
+    out
 }
 
 fn number_words(n: u64) -> String {
@@ -501,6 +600,9 @@ mod tests {
         let words = [("deliver", "dəlˈɪvɚ"), ("stop", "stˈɑp"), ("use", "jˈuz"), ("start", "stˈɑɹt"), ("box", "bˈɑks"), ("copy", "kˈɑpi")];
         let lex = Lexicon { words: words.iter().map(|(w, p)| (w.to_string(), p.to_string())).collect() };
         assert_eq!(lex.word("Delivered"), "dəlˈɪvɚd");
+        assert_eq!(lex.word("deliverstop"), "dəlˈɪvɚstˌɑp");
+        assert!(!lex.word("frobnicate").contains(' '));
+        assert!(lex.word("GPT").contains(' ') || lex.word("GPT").is_empty());
         assert_eq!(lex.word("stopped"), "stˈɑpt");
         assert_eq!(lex.word("used"), "jˈuzd");
         assert_eq!(lex.word("started"), "stˈɑɹtᵻd");
