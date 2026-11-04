@@ -390,6 +390,10 @@ impl App {
         if !models::find(&app.settings.model_id).is_some_and(|m| m.is_downloaded()) {
             open_settings();
         }
+        #[cfg(windows)]
+        if !crate::settings::is_dev() {
+            login::remove_dev_entry();
+        }
         #[cfg(target_os = "macos")]
         if app.settings.start_at_login {
             if let Err(e) = login::set_enabled(true) {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.2 - 2026-11-04
+
+- Fixed (Windows): a console window showing "could not register shortcut F5 ... app initialized" no longer opens at login. It came from a development build that had added itself to start at login; me-voice now removes that entry, and development builds can't add it any more.
+
 ## 2.0.1 - 2026-11-03
 
 - Fixed: words Kokoro doesn't know are sounded out as words instead of spelled letter by letter. Only short all-caps abbreviations (GPT) and letters mixed with digits (T3) are still spelled.

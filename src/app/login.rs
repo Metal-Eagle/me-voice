@@ -5,14 +5,34 @@ use anyhow::Result;
 pub const SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
 
 #[cfg(windows)]
+const KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+/// Windows: removes the "me-voice-dev" start-at-login entry older versions let a
+/// development build add. It launched that build, console window included, at every login.
+#[cfg(windows)]
+pub fn remove_dev_entry() {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let reg = |args: &[&str]| Command::new("reg").args(args).creation_flags(CREATE_NO_WINDOW).output().is_ok_and(|o| o.status.success());
+    if reg(&["query", KEY, "/v", "me-voice-dev"]) && reg(&["delete", KEY, "/v", "me-voice-dev", "/f"]) {
+        crate::app::log::write("removed the development build from start at login");
+    }
+}
+
+#[cfg(windows)]
 pub fn set_enabled(enabled: bool) -> Result<()> {
     use anyhow::{Context, bail};
     use std::process::Command;
 
-    const KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
     let name = if crate::settings::is_dev() { "me-voice-dev" } else { "me-voice" };
     let mut cmd = Command::new("reg");
     if enabled {
+        // A development build opens a console window and lives in a checkout that may be
+        // a stale worktree, so it never starts itself at login.
+        if crate::settings::is_dev() {
+            bail!("development builds don't start at login; use the installed me-voice");
+        }
         let exe = std::env::current_exe().context("finding the startup executable")?;
         let mut value = format!("\"{}\"", exe.display());
         if crate::settings::is_dev() {
