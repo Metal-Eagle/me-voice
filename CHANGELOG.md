@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.2 - 2026-11-04
+
+- No changes.
+
 ## 2.1.1 - 2026-11-04
 
 - Rebuild of 2.1.0; no app changes. Removed a stray worktree link from the repository.
