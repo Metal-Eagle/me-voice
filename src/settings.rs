@@ -390,6 +390,8 @@ pub struct VoiceSettings {
     pub listen_after_speaking: bool,
     pub answer_wait_seconds: u32,
     pub interrupt_by_talking: bool,
+    /// Hold T3 updates while another app plays sound (music, a call), and say them once it's quiet.
+    pub wait_for_quiet: bool,
 }
 
 impl Default for VoiceSettings {
@@ -420,6 +422,7 @@ impl Default for VoiceSettings {
             listen_after_speaking: true,
             answer_wait_seconds: 6,
             interrupt_by_talking: true,
+            wait_for_quiet: false,
         }
     }
 }

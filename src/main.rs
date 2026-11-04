@@ -69,6 +69,15 @@ fn run() -> Result<()> {
             std::thread::sleep(std::time::Duration::from_secs(seconds));
             Ok(())
         }
+        Some("audio-check") => {
+            // Test helper: says whether another app is playing sound (T3 updates stay quiet then).
+            #[cfg(target_os = "windows")]
+            for (pid, peak) in speech::busy::sessions() {
+                println!("  pid {pid}: peak {peak:.3}");
+            }
+            println!("other audio playing: {}", speech::busy::other_audio_playing());
+            Ok(())
+        }
         Some("say") => speech::tts::say_blocking(&args[1..].join(" ")),
         Some("transcribe") => transcribe_file(args.get(1).ok_or_else(|| anyhow!("usage: me-voice transcribe <file.wav>"))?),
         Some(other) => Err(anyhow!("unknown command {other}. Use: settings | toggle | quit | microphones | transcribe <file.wav> | live-test <file.wav>")),

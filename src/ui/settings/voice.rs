@@ -224,6 +224,9 @@ impl SettingsApp {
                 setting_row(ui, "Interrupt by talking", "Start speaking or press the shortcut to cut it off.", |ui| {
                     toggle(ui, &mut v.interrupt_by_talking);
                 });
+                setting_row(ui, "Wait for quiet", "While another app plays sound (music, a call), T3 updates wait until it stops.", |ui| {
+                    toggle(ui, &mut v.wait_for_quiet);
+                });
             });
         });
 

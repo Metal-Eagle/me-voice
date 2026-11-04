@@ -901,10 +901,26 @@ impl App {
         let v = &self.settings.voice;
         let proxy = self.proxy.clone();
         let listen = listen_to.filter(|_| v.listen_after_speaking);
-        crate::speech::tts::announce_text(line, text, v, move || {
-            if let Some(thread) = listen {
-                let _ = proxy.send_event(UserEvent::ListenForReply(thread));
+        if !line.enabled(v) || !crate::speech::tts::installed() {
+            return;
+        }
+        let v = v.clone();
+        // Checking takes a moment, so do it off the UI thread.
+        std::thread::spawn(move || {
+            // Don't talk over music or a call: hold the update until it's quiet
+            // (at most 10 minutes, then say it anyway so it's never lost).
+            if v.wait_for_quiet && crate::speech::busy::other_audio_playing() {
+                log::write("T3 watch: other audio playing, waiting for quiet");
+                let started = std::time::Instant::now();
+                while started.elapsed() < std::time::Duration::from_secs(600) && crate::speech::busy::other_audio_playing() {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
             }
+            crate::speech::tts::announce_text(line, text, &v, move || {
+                if let Some(thread) = listen {
+                    let _ = proxy.send_event(UserEvent::ListenForReply(thread));
+                }
+            });
         });
     }
 
