@@ -3,3 +3,5 @@
 /installer/build
 /installer/output
 /dist
+
+.claude/worktrees/

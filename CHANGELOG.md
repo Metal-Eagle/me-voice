@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.1 - 2026-11-04
+
+- Rebuild of 2.1.0; no app changes. Removed a stray worktree link from the repository.
+
 ## 2.1.0 - 2026-11-04
 
 - New (Windows): "Wait for quiet" on the Voice page (off by default). While another app plays sound, like music or a call, T3 Code updates (working, still working, needs your OK, question, finished, error) wait until it stops, at most 10 minutes, instead of talking over it.
