@@ -27,6 +27,31 @@ pub fn other_audio_playing() -> bool {
     }
 }
 
+/// True while another app has a microphone open: a Teams/Zoom/Meet call (also when muted,
+/// the call keeps the stream open). me-voice's own recording doesn't count.
+pub fn in_call() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        match windows_impl::mic_users() {
+            Ok(pids) => !pids.is_empty(),
+            Err(e) => {
+                crate::app::log::write(&format!("call check: {e}"));
+                false
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+/// Test helper: process ids of other apps using a microphone.
+#[cfg(target_os = "windows")]
+pub fn mic_users() -> Vec<u32> {
+    windows_impl::mic_users().unwrap_or_default()
+}
+
 /// Test helper: (process id, peak) of other apps' active audio sessions.
 #[cfg(target_os = "windows")]
 pub fn sessions() -> Vec<(u32, f32)> {
@@ -38,9 +63,40 @@ mod windows_impl {
     use windows::core::Interface;
     use windows::Win32::Media::Audio::Endpoints::IAudioMeterInformation;
     use windows::Win32::Media::Audio::{
-        eConsole, eRender, AudioSessionStateActive, IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator, MMDeviceEnumerator,
+        eCapture, eConsole, eRender, AudioSessionStateActive, DEVICE_STATE_ACTIVE, IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator, MMDeviceEnumerator,
     };
     use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED};
+
+    /// Process ids of other apps with an active session on any microphone.
+    pub fn mic_users() -> windows::core::Result<Vec<u32>> {
+        unsafe {
+            let init = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let result = (|| {
+                let devices: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
+                let mics = devices.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)?;
+                let me = std::process::id();
+                let mut found = Vec::new();
+                for d in 0..mics.GetCount()? {
+                    let Ok(device) = mics.Item(d) else { continue };
+                    let Ok(manager) = device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) else { continue };
+                    let Ok(sessions) = manager.GetSessionEnumerator() else { continue };
+                    for i in 0..sessions.GetCount().unwrap_or(0) {
+                        let Ok(control) = sessions.GetSession(i) else { continue };
+                        let Ok(control) = control.cast::<IAudioSessionControl2>() else { continue };
+                        let pid = control.GetProcessId().unwrap_or(0);
+                        if pid != me && pid != 0 && control.GetState().ok() == Some(AudioSessionStateActive) && !found.contains(&pid) {
+                            found.push(pid);
+                        }
+                    }
+                }
+                Ok(found)
+            })();
+            if init.is_ok() {
+                CoUninitialize();
+            }
+            result
+        }
+    }
 
     /// Loudest current peak (0..1) across active sessions on the default output, ours excluded.
     pub fn peak_of_others() -> windows::core::Result<f32> {

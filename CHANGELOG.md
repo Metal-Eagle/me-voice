@@ -2,6 +2,10 @@
 
 ## 2.1.2 - 2026-11-04
 
+- Fixed (Windows): T3 Code updates no longer talk through a Teams (or other) call. While another app has the microphone open, updates wait until the call ends; "still working" lines are skipped.
+
+## 2.1.2 - 2026-11-04
+
 - No changes.
 
 ## 2.1.1 - 2026-11-04

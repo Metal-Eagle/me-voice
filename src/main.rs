@@ -75,6 +75,11 @@ fn run() -> Result<()> {
             for (pid, peak) in speech::busy::sessions() {
                 println!("  pid {pid}: peak {peak:.3}");
             }
+            #[cfg(target_os = "windows")]
+            for pid in speech::busy::mic_users() {
+                println!("  mic in use by pid {pid}");
+            }
+            println!("in a call: {}", speech::busy::in_call());
             println!("other audio playing: {}", speech::busy::other_audio_playing());
             Ok(())
         }

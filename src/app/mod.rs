@@ -907,7 +907,19 @@ impl App {
         let v = v.clone();
         // Checking takes a moment, so do it off the UI thread.
         std::thread::spawn(move || {
-            // Don't talk over music or a call: hold the update until it's quiet
+            // Never talk into a call: hold the update until the call ends. "Still working"
+            // is stale by then, so that one is dropped.
+            if crate::speech::busy::in_call() {
+                if line == crate::speech::tts::Line::StillWorking {
+                    log::write("T3 watch: in a call, \"still working\" not spoken");
+                    return;
+                }
+                log::write("T3 watch: in a call, waiting until it ends");
+                while crate::speech::busy::in_call() {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+            }
+            // Don't talk over music: hold the update until it's quiet
             // (at most 10 minutes, then say it anyway so it's never lost).
             if v.wait_for_quiet && crate::speech::busy::other_audio_playing() {
                 log::write("T3 watch: other audio playing, waiting for quiet");
