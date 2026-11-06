@@ -28,6 +28,7 @@ Run `me-voice-setup-<version>.exe` (build it with `.\scripts\build.ps1 -Installe
 | Dictate with a profile | Press an extra shortcut set to **Dictate with profile** (Shortcut page) |
 | Paste the last dictation | Press an extra shortcut set to **Paste last dictation** |
 | Fix the last dictation | Press an extra shortcut set to **Fix last dictation** |
+| Do not disturb | Press an extra shortcut set to **Do not disturb on/off**, or run `me-voice dnd on` / `off` / `toggle` / `status` (handy for automations). While on, me-voice doesn't talk: no T3 Code updates, no spoken replies. Dictation keeps working |
 | Dictate a paragraph | Press an extra shortcut set to **Dictate paragraph**: a window opens that shows everything you say (see below) |
 | Cancel | **Esc** while recording |
 | Settings | Click the tray icon, or right-click → **Settings…** |

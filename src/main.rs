@@ -44,6 +44,20 @@ fn run() -> Result<()> {
         Some("paragraph") => paragraph_window::run(),
         Some("quit") => ipc::send(ipc::Command::Quit).map_err(|_| anyhow!("me-voice is not running")),
         Some("toggle") => ipc::send(ipc::Command::Toggle).map_err(|_| anyhow!("me-voice is not running")),
+        Some("dnd") => {
+            use speech::dnd;
+            match args.get(1).map(String::as_str) {
+                Some("on") => dnd::set(true)?,
+                Some("off") => dnd::set(false)?,
+                Some("toggle") => {
+                    dnd::toggle()?;
+                }
+                None | Some("status") => {}
+                Some(_) => return Err(anyhow!("usage: me-voice dnd [on|off|toggle|status]")),
+            }
+            println!("do not disturb: {}", if dnd::is_on() { "on" } else { "off" });
+            Ok(())
+        }
         Some("check-update") => {
             match app::update::check()? {
                 Some(release) => println!("me-voice {} is available (this is {})", release.version, app::update::CURRENT),

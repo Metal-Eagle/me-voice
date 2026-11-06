@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.0 - 2026-11-06
+
+- New: Do not disturb. Add an extra shortcut with **Do not disturb on/off**, or run `me-voice dnd on|off|toggle|status` from a script or automation. While it's on, me-voice doesn't talk (no T3 Code updates, no spoken replies); dictation keeps working. A notification shows when it switches.
+
 ## 2.1.3 - 2026-11-04
 
 - Fixed (Windows): T3 Code updates no longer talk through a Teams (or other) call. While another app has the microphone open, updates wait until the call ends; "still working" lines are skipped.

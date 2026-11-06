@@ -498,6 +498,10 @@ pub fn say(text: String, v: crate::settings::VoiceSettings) {
 
 /// Like `say`, then calls `done` when the line has played (or was stopped / failed).
 pub fn say_then(text: String, v: crate::settings::VoiceSettings, done: impl FnOnce() + Send + 'static) {
+    if crate::speech::dnd::is_on() {
+        crate::app::log::write("do not disturb: not spoken");
+        return;
+    }
     std::thread::spawn(move || {
         if let Err(e) = speak_blocking(&text, &v) {
             crate::app::log::write(&format!("voice: {e:#}"));
@@ -536,6 +540,9 @@ static LAST_SPOKEN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(Non
 
 /// Renders (cached) and plays `text` with the voice, speed and volume from the settings.
 pub fn speak_blocking(text: &str, v: &crate::settings::VoiceSettings) -> Result<()> {
+    if crate::speech::dnd::is_on() {
+        return Ok(());
+    }
     let samples = rendered(text, v)?;
     // One line at a time: a later line waits for the one playing instead of talking over it.
     let _speaking = SPEAKING.lock().unwrap_or_else(|e| e.into_inner());

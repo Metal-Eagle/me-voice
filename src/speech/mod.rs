@@ -2,6 +2,7 @@
 
 pub mod audio;
 pub mod busy;
+pub mod dnd;
 pub mod models;
 pub mod sound;
 pub mod tts;

@@ -68,6 +68,8 @@ pub enum ShortcutAction {
     /// Copies the selected text, listens for an instruction and replaces the selection
     /// with the AI's answer.
     Command,
+    /// Switches do not disturb on or off: me-voice stops talking until it's switched off.
+    DoNotDisturb,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

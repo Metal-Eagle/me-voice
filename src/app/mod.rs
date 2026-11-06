@@ -586,6 +586,7 @@ impl App {
                 ShortcutAction::FixLast if e.state == HotKeyState::Pressed => self.fix_last(),
                 ShortcutAction::Paragraph if e.state == HotKeyState::Pressed => crate::ui::paragraph_window::open_or_new_line(),
                 ShortcutAction::Command => command = true,
+                ShortcutAction::DoNotDisturb if e.state == HotKeyState::Pressed => toggle_dnd(),
                 _ => {}
             }
             if profile.is_none() && !command && !to_t3 {
@@ -902,6 +903,10 @@ impl App {
         let proxy = self.proxy.clone();
         let listen = listen_to.filter(|_| v.listen_after_speaking);
         if !line.enabled(v) || !crate::speech::tts::installed() {
+            return;
+        }
+        if crate::speech::dnd::is_on() {
+            log::write("T3 watch: do not disturb, not spoken");
             return;
         }
         let v = v.clone();
@@ -1293,6 +1298,22 @@ impl App {
 }
 
 /// A desktop notification; failures only go to the log.
+/// Switches do not disturb from the shortcut and says so in a notification (never out loud).
+fn toggle_dnd() {
+    match crate::speech::dnd::toggle() {
+        Ok(on) => {
+            crate::speech::tts::stop();
+            log::write(&format!("do not disturb {}", if on { "on" } else { "off" }));
+            if on {
+                notify("Do not disturb on", "me-voice stays quiet until you switch it off.");
+            } else {
+                notify("Do not disturb off", "me-voice talks again.");
+            }
+        }
+        Err(e) => notify("Could not switch do not disturb", &e.to_string()),
+    }
+}
+
 fn notify(title: &str, body: &str) {
     if let Err(e) = notify_rust::Notification::new().summary(title).body(body).appname("me-voice").show() {
         log::write(&format!("notification failed: {e}"));

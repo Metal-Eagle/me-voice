@@ -76,6 +76,9 @@ impl SettingsApp {
                             if ui.selectable_label(extra.action == ShortcutAction::Command, "AI command on selection").clicked() {
                                 extra.action = ShortcutAction::Command;
                             }
+                            if ui.selectable_label(extra.action == ShortcutAction::DoNotDisturb, "Do not disturb on/off").clicked() {
+                                extra.action = ShortcutAction::DoNotDisturb;
+                            }
                         });
                     if let ShortcutAction::Dictate { profile } = &mut extra.action {
                         crate::ui::text_menu::add(ui, egui::TextEdit::singleline(profile).hint_text("Profile name").desired_width(140.0));
@@ -210,6 +213,7 @@ pub(super) fn action_label(action: &ShortcutAction) -> &'static str {
         ShortcutAction::FixLast => "Fix last dictation",
         ShortcutAction::Paragraph => "Dictate paragraph",
         ShortcutAction::Command => "AI command on selection",
+        ShortcutAction::DoNotDisturb => "Do not disturb on/off",
     }
 }
 
