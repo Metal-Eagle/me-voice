@@ -394,6 +394,8 @@ pub struct VoiceSettings {
     pub interrupt_by_talking: bool,
     /// Hold T3 updates while another app plays sound (music, a call), and say them once it's quiet.
     pub wait_for_quiet: bool,
+    /// How to say words the voice gets wrong, one per line: `W.O.R.D = word`.
+    pub pronunciations: String,
 }
 
 impl Default for VoiceSettings {
@@ -425,6 +427,7 @@ impl Default for VoiceSettings {
             answer_wait_seconds: 6,
             interrupt_by_talking: true,
             wait_for_quiet: false,
+            pronunciations: String::new(),
         }
     }
 }

@@ -143,6 +143,15 @@ impl SettingsApp {
                 }
                 ui.data_mut(|d| d.insert_temp(custom_id, custom));
             });
+            setting_row(
+                ui,
+                "Pronunciations",
+                "Words it says wrong, one per line: W.O.R.D = word. Lower case is read as a word, capitals as letters.",
+                |ui| {
+                    let field = egui::TextEdit::multiline(&mut v.pronunciations).hint_text("W.O.R.D = word").desired_rows(3).desired_width(180.0);
+                    crate::ui::text_menu::add(ui, field);
+                },
+            );
         });
 
         let talk_back = v.talk_back;

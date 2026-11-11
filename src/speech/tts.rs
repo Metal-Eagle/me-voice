@@ -570,7 +570,94 @@ pub fn warm_up(v: &crate::settings::VoiceSettings) {
     }
 }
 
+/// Swaps words (any case) for how to say them, from lines like `NASA = nasa` or
+/// `W.O.R.D = word`. A dot, space, dash or underscore in a rule matches any run of those, so
+/// `N.A.S.A` also matches "N A S A" (how T3 project names reach the voice). A rule only
+/// matches whole words, not inside a longer one. The spoken form goes through the normal rules,
+/// so lower case is read as a word, not letters.
+fn apply_pronunciations(text: &str, rules: &str) -> String {
+    let is_sep = |c: char| matches!(c, ' ' | '.' | '-' | '_');
+    let is_word = |c: Option<&char>| c.is_some_and(|c| c.is_alphanumeric());
+    // A rule as letters to match, with `None` for "one or more separators".
+    let pattern = |from: &str| -> Vec<Option<char>> {
+        let mut p: Vec<Option<char>> = Vec::new();
+        for c in from.trim().chars() {
+            if is_sep(c) {
+                if p.last().is_some_and(|x| x.is_some()) {
+                    p.push(None);
+                }
+            } else {
+                p.push(Some(c.to_lowercase().next().unwrap_or(c)));
+            }
+        }
+        if p.last() == Some(&None) {
+            p.pop();
+        }
+        p
+    };
+    let mut rules: Vec<(Vec<Option<char>>, &str)> = rules
+        .lines()
+        .filter_map(|l| l.split_once('='))
+        .map(|(from, to)| (pattern(from), to.trim()))
+        .filter(|(from, to)| !from.is_empty() && !to.is_empty())
+        .collect();
+    if rules.is_empty() {
+        return text.to_string();
+    }
+    // Longest first, so "W.O.R.D" wins over a rule for "W".
+    rules.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    let chars: Vec<char> = text.chars().collect();
+    let low: Vec<char> = chars.iter().map(|c| c.to_lowercase().next().unwrap_or(*c)).collect();
+    // Where a rule starting at `i` ends, if it matches there.
+    let match_at = |rule: &[Option<char>], mut i: usize| -> Option<usize> {
+        for part in rule {
+            match part {
+                Some(c) => {
+                    if low.get(i) != Some(c) {
+                        return None;
+                    }
+                    i += 1;
+                }
+                None => {
+                    let start = i;
+                    while low.get(i).is_some_and(|c| is_sep(*c)) {
+                        i += 1;
+                    }
+                    if i == start {
+                        return None;
+                    }
+                }
+            }
+        }
+        Some(i)
+    };
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let at_start = i == 0 || !is_word(chars.get(i - 1));
+        let hit = if at_start {
+            rules.iter().find_map(|(rule, to)| {
+                match_at(rule, i).filter(|&end| !(is_word(chars.get(end - 1)) && is_word(chars.get(end)))).map(|end| (end, *to))
+            })
+        } else {
+            None
+        };
+        match hit {
+            Some((end, to)) => {
+                out.push_str(to);
+                i = end;
+            }
+            None => {
+                out.push(chars[i]);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
 fn rendered(text: &str, v: &crate::settings::VoiceSettings) -> Result<std::sync::Arc<Vec<f32>>> {
+    let text = &apply_pronunciations(text, &v.pronunciations);
     let voice = if v.voice.is_empty() { DEFAULT_VOICE } else { v.voice.as_str() };
     let key = format!("{voice}|{:.2}|{text}", v.speed);
     if let Some(s) = CACHE.lock().unwrap().as_ref().and_then(|c| c.get(&key).cloned()) {
@@ -590,6 +677,27 @@ fn rendered(text: &str, v: &crate::settings::VoiceSettings) -> Result<std::sync:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pronunciations_replace_whole_words_in_any_case() {
+        let rules = "NASA = nasa
+DUDGE=dudge
+bad line
+ = x";
+        assert_eq!(apply_pronunciations("Open the NASA repo.", rules), "Open the nasa repo.");
+        assert_eq!(apply_pronunciations("Nasa and DUDGE, not NASAS", rules), "nasa and dudge, not NASAS");
+        assert_eq!(apply_pronunciations("nothing here", ""), "nothing here");
+        let dots = "W.O.R.D = word
+W = double you";
+        assert_eq!(apply_pronunciations("Say W.O.R.D now, w.o.r.d.", dots), "Say word now, word.");
+        assert_eq!(apply_pronunciations("SWORD and W", dots), "SWORD and double you");
+        // T3 project names reach the voice with the dots turned into spaces.
+        let nasa = "N.A.S.A = nasa";
+        assert_eq!(apply_pronunciations("N A S A, QA Engineer", nasa), "nasa, QA Engineer");
+        assert_eq!(apply_pronunciations("In N.A.S.A. now", nasa), "In nasa. now");
+        assert_eq!(apply_pronunciations("N-A-S-A", nasa), "nasa");
+        assert_eq!(apply_pronunciations("NASA and N A S Ax", nasa), "NASA and N A S Ax");
+    }
 
     #[test]
     fn numbers() {
@@ -619,3 +727,4 @@ mod tests {
         assert_eq!(lex.word("copied"), "kˈɑpid");
     }
 }
+

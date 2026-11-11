@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.0 - 2026-11-11
+
+- New: Pronunciations (Voice page). Tell the voice how to say words it gets wrong, one per line, e.g. `W.O.R.D = word`. Lower case is read as a word instead of letter by letter.
+
 ## 2.2.0 - 2026-11-06
 
 - New: Do not disturb. Add an extra shortcut with **Do not disturb on/off**, or run `me-voice dnd on|off|toggle|status` from a script or automation. While it's on, me-voice doesn't talk (no T3 Code updates, no spoken replies); dictation keeps working. A notification shows when it switches.
