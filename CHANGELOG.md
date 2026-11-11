@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.1 - 2026-11-11
+
+- Rebuild of 2.3.0 (pronunciations): the macOS build now runs on GitHub's current macOS machines, so this release ships for both Windows and macOS.
+
 ## 2.3.0 - 2026-11-11
 
 - New: Pronunciations (Voice page). Tell the voice how to say words it gets wrong, one per line, e.g. `W.O.R.D = word`. Lower case is read as a word instead of letter by letter.
