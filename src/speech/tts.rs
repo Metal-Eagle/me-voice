@@ -23,6 +23,49 @@ pub fn dir() -> PathBuf {
     base.join("me-voice").join("kokoro")
 }
 
+/// What Kokoro needs: (file name, download URL, SHA-256, size in bytes). The model and voice
+/// come from onnx-community's Kokoro ONNX export, the dictionaries from misaki (pinned commit).
+const FILES: [(&str, &str, &str, u64); 4] = [
+    (
+        "model.onnx",
+        "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx",
+        "8fbea51ea711f2af382e88c833d9e288c6dc82ce5e98421ea61c058ce21a34cb",
+        325_532_232,
+    ),
+    (
+        "af_heart.bin",
+        "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/af_heart.bin",
+        "d583ccff3cdca2f7fae535cb998ac07e9fcb90f09737b9a41fa2734ec44a8f0b",
+        522_240,
+    ),
+    (
+        "us_gold.json",
+        "https://raw.githubusercontent.com/hexgrad/misaki/fba1236595f2d2bf21d414ba6e57d25256afada3/misaki/data/us_gold.json",
+        "dc414872a49a28ae6c141463d502fd945f3b2fde040484fdc47d00cc4612686f",
+        3_000_469,
+    ),
+    (
+        "us_silver.json",
+        "https://raw.githubusercontent.com/hexgrad/misaki/fba1236595f2d2bf21d414ba6e57d25256afada3/misaki/data/us_silver.json",
+        "de8f67be911bb6c659187b4a65fd966b6a30e56350e0f790d763210b053ac475",
+        3_099_517,
+    ),
+];
+
+/// Downloads the files that are missing into `dir()`, reporting (bytes done, total bytes)
+/// over all of them. Each file is checked against its SHA-256.
+pub fn download(mut progress: impl FnMut(u64, Option<u64>)) -> Result<()> {
+    let d = dir();
+    let missing: Vec<_> = FILES.iter().filter(|(file, ..)| !d.join(file).is_file()).collect();
+    let total: u64 = missing.iter().map(|f| f.3).sum();
+    let mut before = 0;
+    for (file, url, sha, size) in missing {
+        crate::speech::models::fetch(url, &d.join(file), Some(sha), file, &mut |done, _| progress(before + done, Some(total)))?;
+        before += size;
+    }
+    Ok(())
+}
+
 /// Whether the model, voice and dictionaries are all there.
 pub fn installed() -> bool {
     let d = dir();

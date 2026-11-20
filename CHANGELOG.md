@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.1 - 2026-11-20
+
+- New: **Download button for the Kokoro voice** (Voice page). When Kokoro · Heart isn't on this PC yet, click Download: the model, the Heart voice and the pronunciation dictionaries (332 MB) are fetched with a progress bar and checked against their checksums.
+- Includes everything from 2.4.0 below (2.4.0 itself was never published: its Windows build failed on GitHub).
+
 ## 2.4.0 - 2026-11-20
 
 Faster on slower computers: much less waiting after you stop talking.

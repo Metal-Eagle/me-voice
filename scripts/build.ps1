@@ -46,6 +46,13 @@ if ($Installer) {
 
 $root = Split-Path $PSScriptRoot
 Set-Location $root
+# ort-sys copies the ONNX Runtime DLLs into these folders when it can't symlink them (CI
+# runners), and fails when a folder doesn't exist yet on a fresh checkout.
+foreach ($p in 'debug', 'release') {
+    foreach ($d in "$p\examples", "$p\deps", "$p\build\examples", "$p\build\deps") {
+        New-Item -ItemType Directory -Force (Join-Path $root "target\$d") | Out-Null
+    }
+}
 if ($Test) { cargo test; exit $LASTEXITCODE }
 if ($Installer) { cargo clean --release -p whisper-rs-sys }
 if ($Release -or $Installer) { cargo build --release } else { cargo build }

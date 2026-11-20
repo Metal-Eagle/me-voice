@@ -100,7 +100,7 @@ impl Model {
 }
 
 /// Downloads one file to `dest` via a `.part` file, checking its SHA-256 when one is given.
-fn fetch(url: &str, dest: &Path, expected: Option<&str>, label: &str, progress: &mut impl FnMut(u64, Option<u64>)) -> Result<()> {
+pub fn fetch(url: &str, dest: &Path, expected: Option<&str>, label: &str, progress: &mut impl FnMut(u64, Option<u64>)) -> Result<()> {
     if let Some(dir) = dest.parent() {
         fs::create_dir_all(dir)?;
     }

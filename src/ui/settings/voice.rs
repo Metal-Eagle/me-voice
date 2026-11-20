@@ -90,11 +90,7 @@ impl SettingsApp {
 
         group(ui, |ui| {
             setting_row(ui, "Kokoro · Heart", "Kokoro-82M, full quality (fp32) · 310 MB · on this PC", |ui| {
-                if is_installed {
-                    ui.label(egui::RichText::new("Ready").size(11.0).color(OK));
-                } else {
-                    ui.label(egui::RichText::new("Not downloaded").size(11.0).weak());
-                }
+                kokoro_status(ui, &mut self.download, is_installed);
             });
             setting_row(ui, "Test", "Says a short sentence with the settings below.", |ui| {
                 if play_button(ui, is_installed).on_hover_text("Test voice").clicked() {
@@ -241,5 +237,52 @@ impl SettingsApp {
 
         ui.add_space(8.0);
         ui.label(egui::RichText::new("Kokoro and its files stay on this PC. Nothing you hear is generated online.").size(12.0).weak());
+    }
+}
+
+/// Download id of Kokoro in `SettingsApp::download` (shared with the speech models, so only
+/// one download runs at a time).
+const KOKORO_DOWNLOAD: &str = "kokoro";
+
+/// Ready, a Download button, or the progress of the Kokoro download.
+fn kokoro_status(ui: &mut egui::Ui, download: &mut Option<Arc<Mutex<Download>>>, is_installed: bool) {
+    let mut busy = false;
+    if let Some(dl) = download.as_ref() {
+        let d = dl.lock().unwrap();
+        busy = !d.finished;
+        if d.model_id == KOKORO_DOWNLOAD {
+            if !d.finished {
+                let fraction = d.total.map_or(0.0, |t| d.done as f32 / t as f32);
+                ui.add(egui::ProgressBar::new(fraction).desired_width(ui.available_width().min(240.0)).show_percentage().fill(ACCENT));
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+                return;
+            }
+            if let Some(err) = &d.error {
+                ui.colored_label(ERROR, err).on_hover_text("Click Download to try again");
+            }
+        }
+    }
+    if is_installed {
+        ui.label(egui::RichText::new("Ready").size(13.0).color(OK));
+        return;
+    }
+    let clicked = ui
+        .add_enabled(!busy, theme::primary_button("Download"))
+        .on_disabled_hover_text("Another download is running")
+        .clicked();
+    if clicked {
+        let state = Arc::new(Mutex::new(Download { model_id: KOKORO_DOWNLOAD.into(), ..Default::default() }));
+        *download = Some(state.clone());
+        std::thread::spawn(move || {
+            let progress_state = state.clone();
+            let result = crate::speech::tts::download(move |done, total| {
+                let mut d = progress_state.lock().unwrap();
+                d.done = done;
+                d.total = total;
+            });
+            let mut d = state.lock().unwrap();
+            d.finished = true;
+            d.error = result.err().map(|e| format!("{e:#}"));
+        });
     }
 }
