@@ -47,10 +47,19 @@ use tray::{Status, Tray};
 const MIN_CLIP: Duration = Duration::from_millis(300);
 /// Sound-wave refresh rate while listening (the only time the app redraws anything).
 const FRAME: Duration = Duration::from_millis(33);
-/// Re-run live transcription once this much new audio has come in.
+/// Re-run live transcription once this much new audio has come in (at least; on a slow
+/// computer it waits longer, see `partial_interval`).
 const PARTIAL_EVERY_SECONDS: f32 = 0.3;
+const PARTIAL_EVERY_SECONDS_LOW_POWER: f32 = 1.0;
 /// The live preview only re-reads this many recent seconds.
 const PARTIAL_WINDOW_SECONDS: usize = 10;
+const PARTIAL_WINDOW_SECONDS_LOW_POWER: usize = 5;
+/// Transcribe-while-talking: a pause this long ends a piece...
+const CHUNK_PAUSE: Duration = Duration::from_millis(600);
+/// ...when the piece holds at least this many seconds of audio.
+const CHUNK_MIN_SECONDS: usize = 3;
+/// Characters of the text before a piece given to Whisper as a prompt, for continuity.
+const CHUNK_PROMPT_CHARS: usize = 200;
 /// How long the final text stays in the pill after pasting.
 const SHOW_RESULT: Duration = Duration::from_millis(1800);
 /// How long a finished T3 dictation waits for a thread to be picked before it is dropped.
@@ -68,7 +77,7 @@ enum UserEvent {
     /// The text went to the AI; the pill shows it.
     Polishing,
     /// Live (partial) transcription while still recording.
-    Partial { recording: u64, text: String },
+    Partial { recording: u64, text: String, took: Duration },
     Update(UpdateResult),
     /// A watched T3 thread changed (working, finished, question...).
     Watch(t3_watch::WatchEvent),
@@ -116,6 +125,16 @@ struct App {
     /// Tells a running live preview to stop, so the final transcription can start at once.
     partial_abort: Arc<std::sync::atomic::AtomicBool>,
     partial_seconds: f32,
+    /// Seconds between live preview runs: longer when a run takes long (slow computer).
+    partial_interval: f32,
+    /// Transcribe-while-talking: text of the finished pieces, in order.
+    chunks: Arc<Mutex<Vec<String>>>,
+    /// 16 kHz sample where the next piece starts.
+    chunk_start: usize,
+    /// The piece being transcribed right now.
+    chunk_job: Option<std::thread::JoinHandle<()>>,
+    /// Screen context, once it has arrived from `context`.
+    context_value: Option<Context>,
     quit_requested: bool,
     /// Length of the last recording, for the history.
     clip_seconds: f32,
@@ -286,7 +305,7 @@ pub fn run() -> Result<()> {
             Event::UserEvent(UserEvent::Update(result)) => app.on_update(result),
             Event::UserEvent(UserEvent::Watch(event)) => app.on_watch(event),
             Event::UserEvent(UserEvent::ListenForReply(thread)) => app.listen_for_reply(thread),
-            Event::UserEvent(UserEvent::Partial { recording, text }) => app.on_partial(recording, text),
+            Event::UserEvent(UserEvent::Partial { recording, text, took }) => app.on_partial(recording, text, took),
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => app.unload_if_idle(),
             Event::RedrawRequested(id) => {
                 if let Some(o) = app.overlay.as_mut().filter(|o| o.window_id() == id) {
@@ -356,6 +375,11 @@ impl App {
             partial_count: 0,
             partial_abort: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             partial_seconds: 0.0,
+            partial_interval: PARTIAL_EVERY_SECONDS,
+            chunks: Arc::new(Mutex::new(Vec::new())),
+            chunk_start: 0,
+            chunk_job: None,
+            context_value: None,
             show_result_until: None,
             clip_seconds: 0.0,
             quit_requested: false,
@@ -717,14 +741,21 @@ impl App {
                 self.live_text.clear();
                 self.partial_seconds = 0.0;
                 self.partial_count = 0;
+                self.partial_interval = PARTIAL_EVERY_SECONDS;
+                self.chunks = Arc::new(Mutex::new(Vec::new()));
+                self.chunk_start = 0;
+                self.chunk_job = None;
+                self.context_value = None;
                 self.show_result_until = None;
                 self.polishing = false;
                 self.context = start_context(&self.active);
+                self.preload_models();
                 self.warm = Some(crate::text::polish::warm_up(&self.active, self.command_mode, &self.active.ai_style));
                 self.tray.set_status(Status::Recording);
                 self.set_cancel_key(true);
                 self.set_digit_keys(true);
-                if self.active.sounds {
+                // Low-power mode leaves the CPU to the speech model while you talk.
+                if self.active.sounds && !self.active.low_power {
                     // Load Kokoro and render the lines while you talk, so they play instantly.
                     let voice = self.active.voice.clone();
                     std::thread::spawn(move || crate::speech::tts::warm_up(&voice));
@@ -759,12 +790,13 @@ impl App {
         log::write(&format!("live preview updated {} times", self.partial_count));
         let samples = rec.stop();
         self.clip_seconds = samples.len() as f32 / SAMPLE_RATE as f32;
+        // Only what came after the pieces already transcribed while you talked.
+        let pieces = self.chunks.clone();
+        let job = self.chunk_job.take();
+        let has_pieces = job.is_some() || !pieces.lock().unwrap().is_empty();
+        let tail = samples[self.chunk_start.min(samples.len())..].to_vec();
         // Quiet parts are cut before transcribing: faster, and no made-up words from silence.
-        let samples = if self.active.trim_silence {
-            audio::trim_silence(&samples, self.active.silence_level)
-        } else {
-            samples
-        };
+        let tail = if self.active.trim_silence { audio::trim_silence(&tail, self.active.silence_level) } else { tail };
         if self.active.sounds {
             match self.active.voice.stop_sound {
                 crate::settings::StopSound::Off => {}
@@ -772,7 +804,8 @@ impl App {
                 _ => sound::play(Beep::Stop),
             }
         }
-        if samples.len() < SAMPLE_RATE * MIN_CLIP.as_millis() as usize / 1000 {
+        let min_clip = SAMPLE_RATE * MIN_CLIP.as_millis() as usize / 1000;
+        if !has_pieces && tail.len() < min_clip {
             if self.reply_to.take().is_some() {
                 log::write("reply: nothing said");
             }
@@ -782,26 +815,122 @@ impl App {
             self.tray.set_status(Status::Idle);
             return;
         }
+        // A bit of trailing noise after the last piece is not worth transcribing.
+        let tail = if tail.len() < min_clip { Vec::new() } else { tail };
         self.tray.set_status(Status::Transcribing);
 
         let settings = self.active.clone();
         let transcriber = self.transcriber.clone();
         let proxy = self.proxy.clone();
         let command_mode = self.command_mode;
-        let context = self.context.take();
+        let context = match self.context_value.take() {
+            // Already arrived while talking: hand it over through a fresh channel.
+            Some(c) => {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let _ = tx.send(c);
+                self.context = None;
+                Some(rx)
+            }
+            None => self.context.take(),
+        };
         let warm = self.warm.take().unwrap_or_else(crate::text::polish::Warm::none);
         std::thread::spawn(move || {
             let started = Instant::now();
             power::set_priority(power::Priority::High);
-            let result = finish(&settings, &transcriber, &samples, command_mode, context, warm, &proxy);
+            if let Some(job) = job {
+                let _ = job.join();
+                log::write(&format!("waited {:.2} s for the last piece", started.elapsed().as_secs_f32()));
+            }
+            let pieces = std::mem::take(&mut *pieces.lock().unwrap());
+            let result = finish(&settings, &transcriber, &pieces, &tail, command_mode, context, warm, &proxy);
             power::set_priority(power::Priority::Normal);
             log::write(&format!(
-                "transcribed {:.1} s of audio in {:.2} s",
-                samples.len() as f32 / SAMPLE_RATE as f32,
+                "after stop: {:.1} s of audio left ({} pieces done while talking), ready in {:.2} s",
+                tail.len() as f32 / SAMPLE_RATE as f32,
+                pieces.len(),
                 started.elapsed().as_secs_f32()
             ));
             let _ = proxy.send_event(UserEvent::Transcribed(result));
         });
+    }
+
+    /// Text of the pieces already transcribed while talking (raw, for the pill).
+    fn committed_text(&self) -> String {
+        self.chunks.lock().unwrap().iter().filter(|t| !t.is_empty()).cloned().collect::<Vec<_>>().join(" ")
+    }
+
+    /// Loads the speech model(s) in the background as soon as you start talking, so the
+    /// load is done by the time the first transcription needs it.
+    fn preload_models(&self) {
+        let settings = self.active.clone();
+        let transcriber = self.transcriber.clone();
+        std::thread::spawn(move || {
+            let wanted: Vec<_> = [pick_model(&settings, true), pick_model(&settings, false)].into_iter().flatten().collect();
+            for m in wanted {
+                if let Err(e) = transcriber.lock().unwrap().preload(&m.path(), m.engine) {
+                    log::write(&format!("preload: {e}"));
+                }
+            }
+        });
+    }
+
+    /// Transcribe-while-talking: at a pause, send the finished piece to the main model in
+    /// the background. One piece at a time, so each can use the one before as a prompt.
+    fn maybe_start_chunk(&mut self) {
+        if !self.active.transcribe_while_talking || self.command_mode {
+            return;
+        }
+        if self.chunk_job.as_ref().is_some_and(|j| !j.is_finished()) {
+            return;
+        }
+        let State::Recording { rec, .. } = &self.state else { return };
+        let level = self.active.silence_level;
+        if !rec.silent_for(level).is_some_and(|q| q >= CHUNK_PAUSE) {
+            return;
+        }
+        let end = (rec.seconds() * SAMPLE_RATE as f32) as usize;
+        if end < self.chunk_start + SAMPLE_RATE * CHUNK_MIN_SECONDS {
+            return;
+        }
+        let piece = rec.snapshot_from(self.chunk_start);
+        let piece_end = self.chunk_start + piece.len();
+        let piece = if self.active.trim_silence { audio::trim_silence(&piece, level) } else { piece };
+        self.chunk_start = piece_end;
+        if piece.len() < SAMPLE_RATE * MIN_CLIP.as_millis() as usize / 1000 {
+            return;
+        }
+        if self.context_value.is_none() {
+            self.context_value = self.context.as_ref().and_then(|rx| rx.try_recv().ok());
+        }
+        let hints = self.context_value.as_ref().map(|c| c.keywords(HINT_CHARS)).unwrap_or_default();
+        let settings = self.active.clone();
+        let transcriber = self.transcriber.clone();
+        let chunks = self.chunks.clone();
+        // Hold the slot now so the pieces stay in order.
+        let index = {
+            let mut c = chunks.lock().unwrap();
+            c.push(String::new());
+            c.len() - 1
+        };
+        self.chunk_job = Some(std::thread::spawn(move || {
+            power::set_priority(power::Priority::AboveNormal);
+            let previous = tail_chars(&chunks.lock().unwrap()[..index].join(" "), CHUNK_PROMPT_CHARS);
+            let prompt = join_prompt(&[&hints, &previous]);
+            let started = Instant::now();
+            match raw_text(&settings, &transcriber, &piece, false, None, &prompt) {
+                Ok(text) => {
+                    log::write(&format!(
+                        "piece {} ({:.1} s) transcribed while talking in {:.2} s",
+                        index + 1,
+                        piece.len() as f32 / SAMPLE_RATE as f32,
+                        started.elapsed().as_secs_f32()
+                    ));
+                    chunks.lock().unwrap()[index] = text;
+                }
+                Err(e) => log::write(&format!("piece {}: {e}", index + 1)),
+            }
+            power::set_priority(power::Priority::Normal);
+        }));
     }
 
     fn on_transcribed(&mut self, result: Result<Dictation>) {
@@ -1064,6 +1193,10 @@ impl App {
 
     fn unload_deadline(&self) -> Option<Instant> {
         let minutes = self.settings.unload_after_minutes;
+        // Low-power mode keeps the model loaded: loading it again is slow on such machines.
+        if self.settings.low_power && minutes != 0 {
+            return None;
+        }
         if minutes <= 0 || !matches!(self.state, State::Idle) {
             return None;
         }
@@ -1114,6 +1247,7 @@ impl App {
             o.update(phase, levels, &self.live_text);
         }
         if phase == Phase::Listening {
+            self.maybe_start_chunk();
             self.maybe_start_partial();
         }
     }
@@ -1159,22 +1293,31 @@ impl App {
     fn maybe_start_partial(&mut self) {
         let State::Recording { rec, .. } = &self.state else { return };
         let seconds = rec.seconds();
-        if self.partial_running || seconds - self.partial_seconds < PARTIAL_EVERY_SECONDS {
+        if self.partial_running || seconds - self.partial_seconds < self.partial_interval {
+            return;
+        }
+        // The piece that ends up in the text goes first; the preview waits for it.
+        if self.chunk_job.as_ref().is_some_and(|j| !j.is_finished()) {
             return;
         }
         // Nothing new to recognise while you're silent: skip the work.
         if !rec.has_sound(self.active.silence_level) {
             return;
         }
+        // Only what came after the pieces already done, and only the last few seconds of
+        // that: enough for the newest words, and fast even when you talk long.
+        let window = if self.active.low_power { PARTIAL_WINDOW_SECONDS_LOW_POWER } else { PARTIAL_WINDOW_SECONDS };
+        let total = (seconds * SAMPLE_RATE as f32) as usize;
+        let from = self.chunk_start.max(total.saturating_sub(SAMPLE_RATE * window));
+        let samples = rec.snapshot_from(from);
+        // Just after a piece was cut off it's only silence: nothing new to show (and
+        // Whisper would make up words).
+        if !audio::has_sound(&samples, SAMPLE_RATE as u32) {
+            return;
+        }
         self.partial_running = true;
         self.partial_count += 1;
         self.partial_seconds = seconds;
-        // Only the last few seconds: enough for the newest words, and fast even when you talk long.
-        let mut samples = rec.snapshot();
-        let keep = SAMPLE_RATE * PARTIAL_WINDOW_SECONDS;
-        if samples.len() > keep {
-            samples.drain(..samples.len() - keep);
-        }
         let abort = Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.partial_abort = abort.clone();
         let settings = self.active.clone();
@@ -1183,6 +1326,7 @@ impl App {
         let proxy = self.proxy.clone();
         std::thread::spawn(move || {
             power::set_priority(power::Priority::AboveNormal);
+            let started = Instant::now();
             let text = match transcribe(&settings, &transcriber, &samples, true, Some(abort.clone())) {
                 Ok(text) => text,
                 Err(e) => {
@@ -1193,24 +1337,34 @@ impl App {
             if !abort.load(std::sync::atomic::Ordering::Relaxed) {
                 power::set_priority(power::Priority::Normal);
             }
-            let _ = proxy.send_event(UserEvent::Partial { recording, text });
+            let _ = proxy.send_event(UserEvent::Partial { recording, text, took: started.elapsed() });
         });
     }
 
-    fn on_partial(&mut self, recording: u64, text: String) {
+    fn on_partial(&mut self, recording: u64, text: String, took: Duration) {
         if !finish_preview(self.recording_id, recording, &mut self.partial_running) {
             return;
         }
+        // Never keep the computer busy non-stop: wait at least twice as long as a run took.
+        let base = if self.active.low_power { PARTIAL_EVERY_SECONDS_LOW_POWER } else { PARTIAL_EVERY_SECONDS };
+        self.partial_interval = base.max(took.as_secs_f32() * 2.0);
+        // Show the pieces already done before the live words.
+        let committed = self.committed_text();
+        let join = |rest: String| match (committed.is_empty(), rest.is_empty()) {
+            (true, _) => rest,
+            (false, true) => committed.clone(),
+            (false, false) => format!("{committed} {rest}"),
+        };
         if !matches!(self.state, State::Recording { .. }) {
             return;
         }
         let command = cleanup::voice_command(&text, &self.active).filter(|(c, _)| *c != cleanup::VoiceCommand::Scratch);
         if let Some((command, rest)) = command {
             log::write(&format!("voice command: {command:?}"));
-            self.live_text = rest;
+            self.live_text = join(rest);
             self.stop_recording();
         } else if !text.trim().is_empty() {
-            self.live_text = text;
+            self.live_text = join(text);
         }
     }
 

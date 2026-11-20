@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.0 - 2026-11-20
+
+Faster on slower computers: much less waiting after you stop talking.
+
+- New: **Transcribe while you talk** (Speech → Speed, on by default). Each pause is turned into text while you keep talking, so only the last bit is left when you stop. On an older laptop a 22-second dictation went from about 16 s of waiting to well under a second.
+- New: **Low-power mode** (Speech → Speed). Keeps the model loaded, updates the live text less often, skips the AI polish and doesn't prepare the voice while you talk.
+- New: **CPU threads** setting. Automatic now uses about one thread per physical core, which is faster on laptops with hyperthreading.
+- The speech model starts loading the moment you start talking, instead of when you stop.
+- The live text slows down by itself on slow computers, so it never keeps the processor busy non-stop, and it waits while finished sentences are transcribed.
+- Whisper reuses its working memory between runs instead of setting it up each time.
+- The log now shows where the time goes (model load, waiting, each piece, the last bit).
+
 ## 2.3.1 - 2026-11-11
 
 - Rebuild of 2.3.0 (pronunciations): the macOS build now runs on GitHub's current macOS machines, so this release ships for both Windows and macOS.

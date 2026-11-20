@@ -118,6 +118,13 @@ impl Recording {
         resample(&samples, self.rate, SAMPLE_RATE as u32)
     }
 
+    /// Like `snapshot`, but only from 16 kHz sample `start` on (cheaper for long recordings).
+    pub fn snapshot_from(&self, start: usize) -> Vec<f32> {
+        let buf = self.buffer.lock().unwrap();
+        let from = (start as u64 * self.rate as u64 / SAMPLE_RATE as u64) as usize;
+        resample(&buf[from.min(buf.len())..], self.rate, SAMPLE_RATE as u32)
+    }
+
     /// Loudness of the last ~2 seconds as `n` values from 0.0 to 1.0 (for the sound wave).
     pub fn levels(&self, n: usize) -> Vec<f32> {
         levels_of(&self.buffer.lock().unwrap(), self.rate, n)

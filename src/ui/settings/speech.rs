@@ -60,6 +60,26 @@ impl SettingsApp {
                     });
             });
         });
+
+        theme::section_label(ui, "SPEED");
+        group(ui, |ui| {
+            setting_row(ui, "Transcribe while you talk", "Each pause is turned into text right away, so only the last bit is left when you stop. Much less waiting on long dictations.", |ui| {
+                toggle(ui, &mut self.edit.transcribe_while_talking);
+            });
+            setting_row(ui, "Low-power mode", "For slower computers: keeps the model loaded, updates the live text less often, skips the AI polish and doesn't prepare the voice while you talk.", |ui| {
+                toggle(ui, &mut self.edit.low_power);
+            });
+            setting_row(ui, "CPU threads", "Automatic uses about one per physical core. Try fewer if transcribing feels slow.", |ui| {
+                let label = |n: u32| if n == 0 { "Automatic".to_string() } else { n.to_string() };
+                egui::ComboBox::from_id_salt("threads")
+                    .selected_text(label(self.edit.threads))
+                    .show_ui(ui, |ui| {
+                        for n in [0, 1, 2, 3, 4, 6, 8] {
+                            ui.selectable_value(&mut self.edit.threads, n, label(n));
+                        }
+                    });
+            });
+        });
     }
 
     /// Model cards in equal columns that fill the width (fewer columns on narrow windows).

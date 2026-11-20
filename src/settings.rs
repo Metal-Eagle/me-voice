@@ -97,6 +97,14 @@ pub struct Settings {
     pub insert_mode: InsertMode,
     /// Minutes of idle time before the model is unloaded. 0 = right away, negative = never.
     pub unload_after_minutes: i64,
+    /// For slower computers: keeps the model loaded, updates the live text less often,
+    /// skips the AI polish and doesn't prepare the voice while you talk.
+    pub low_power: bool,
+    /// Transcribe finished sentences during pauses while you talk, so only the last
+    /// bit is left when you stop.
+    pub transcribe_while_talking: bool,
+    /// CPU threads for speech recognition; 0 = automatic.
+    pub threads: u32,
     pub sounds: bool,
     /// Talk back: the Kokoro voice, what it says and what you can say back (Voice page).
     pub voice: VoiceSettings,
@@ -197,6 +205,9 @@ impl Default for Settings {
             microphone: None,
             insert_mode: InsertMode::Paste,
             unload_after_minutes: 5,
+            low_power: false,
+            transcribe_while_talking: true,
+            threads: 0,
             sounds: true,
             voice: VoiceSettings::default(),
             keep_history: true,

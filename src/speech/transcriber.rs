@@ -7,7 +7,7 @@ use std::time::Instant;
 use anyhow::{anyhow, Result};
 use transcribe_rs::onnx::parakeet::{ParakeetModel, ParakeetParams};
 use transcribe_rs::onnx::Quantization;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 use crate::speech::models::Engine;
 
@@ -24,7 +24,8 @@ const MAX_LOADED: usize = 2;
 
 /// A loaded speech model of either engine.
 enum Loaded {
-    Whisper(WhisperContext),
+    /// The state (work buffers) is kept and reused, so each run skips allocating it.
+    Whisper(WhisperContext, Option<WhisperState>),
     Parakeet(Box<ParakeetModel>),
 }
 
@@ -45,6 +46,8 @@ pub struct Request<'a> {
     pub light: bool,
     /// Set to true to stop this transcription early (live preview when you stop talking).
     pub abort: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// CPU threads for Whisper; 0 = pick automatically.
+    pub threads: u32,
 }
 
 impl Transcriber {
@@ -61,21 +64,35 @@ impl Transcriber {
         self.loaded.clear();
     }
 
+    /// Loads a model ahead of time (when you start talking), so the first
+    /// transcription doesn't have to wait for it.
+    pub fn preload(&mut self, model_path: &Path, engine: Engine) -> Result<()> {
+        self.load(model_path, engine)?;
+        self.last_used = Instant::now();
+        Ok(())
+    }
+
     fn load(&mut self, model_path: &Path, engine: Engine) -> Result<&mut Loaded> {
         if let Some(i) = self.loaded.iter().position(|(p, _)| p == model_path) {
             return Ok(&mut self.loaded[i].1);
         }
+        let started = Instant::now();
         if self.loaded.len() >= MAX_LOADED {
             self.loaded.remove(0);
         }
         let loaded = match engine {
-            Engine::Whisper => Loaded::Whisper(load_whisper(model_path)?),
+            Engine::Whisper => Loaded::Whisper(load_whisper(model_path)?, None),
             Engine::Parakeet => {
                 let model = ParakeetModel::load(model_path, &Quantization::Int8)
                     .map_err(|e| anyhow!("loading model {}: {e}", model_path.display()))?;
                 Loaded::Parakeet(Box::new(model))
             }
         };
+        crate::app::log::write(&format!(
+            "loaded {} in {:.2} s",
+            model_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            started.elapsed().as_secs_f32()
+        ));
         self.loaded.push((model_path.to_path_buf(), loaded));
         Ok(&mut self.loaded.last_mut().unwrap().1)
     }
@@ -83,9 +100,19 @@ impl Transcriber {
     /// Transcribes 16 kHz mono samples.
     pub fn transcribe(&mut self, samples: &[f32], req: &Request) -> Result<String> {
         self.last_used = Instant::now();
+        // A live preview that was overtaken (you stopped talking) skips its turn,
+        // so the final transcription never waits behind it.
+        if req.abort.as_ref().is_some_and(|a| a.load(std::sync::atomic::Ordering::Relaxed)) {
+            return Ok(String::new());
+        }
         let loaded = self.load(req.model_path, req.engine)?;
         let text = match loaded {
-            Loaded::Whisper(ctx) => whisper_text(ctx, samples, req)?,
+            Loaded::Whisper(ctx, state) => {
+                if state.is_none() {
+                    *state = Some(ctx.create_state().map_err(|e| anyhow!("creating state: {e}"))?);
+                }
+                whisper_text(state.as_mut().unwrap(), samples, req)?
+            }
             Loaded::Parakeet(model) => parakeet_text(model, samples)?,
         };
         self.last_used = Instant::now();
@@ -101,9 +128,7 @@ fn load_whisper(model_path: &Path) -> Result<WhisperContext> {
     WhisperContext::new_with_params(model_path, ctx_params).map_err(|e| anyhow!("loading model {}: {e}", model_path.display()))
 }
 
-fn whisper_text(ctx: &WhisperContext, samples: &[f32], req: &Request) -> Result<String> {
-    let mut state = ctx.create_state().map_err(|e| anyhow!("creating state: {e}"))?;
-
+fn whisper_text(state: &mut WhisperState, samples: &[f32], req: &Request) -> Result<String> {
     // Whisper needs at least one second of audio; pad short clips with silence.
     let mut audio = samples.to_vec();
     if audio.len() < SAMPLE_RATE {
@@ -111,7 +136,7 @@ fn whisper_text(ctx: &WhisperContext, samples: &[f32], req: &Request) -> Result<
     }
 
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_n_threads(thread_count());
+    params.set_n_threads(thread_count(req.threads));
     // The preview only needs the running text, not segment boundaries.
     params.set_single_segment(req.light);
     params.set_language(if req.language == "auto" { None } else { Some(req.language) });
@@ -171,12 +196,36 @@ fn env_flag(name: &str, default: bool) -> bool {
 }
 
 /// Whisper splits work evenly over its threads and waits for the slowest one, so on
-/// CPUs with slow efficiency cores more threads can be much slower. `ME_VOICE_THREADS`
-/// overrides the default (for testing).
-fn thread_count() -> i32 {
+/// CPUs with hyperthreading or slow efficiency cores more threads can be much slower.
+/// `setting` (0 = auto) comes from the settings; `ME_VOICE_THREADS` overrides both (testing).
+pub fn thread_count(setting: u32) -> i32 {
     if let Some(n) = std::env::var("ME_VOICE_THREADS").ok().and_then(|v| v.parse::<i32>().ok()) {
         return n.max(1);
     }
-    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-    cores.clamp(1, 8) as i32
+    if setting > 0 {
+        return setting as i32;
+    }
+    let logical = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    auto_threads(logical) as i32
+}
+
+/// About the number of physical cores: half the logical ones (hyperthreading), at least
+/// two where there are two, at most eight.
+fn auto_threads(logical: usize) -> usize {
+    (logical / 2).max(logical.min(2)).min(8)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auto_threads_follow_physical_cores() {
+        assert_eq!(auto_threads(1), 1);
+        assert_eq!(auto_threads(2), 2);
+        assert_eq!(auto_threads(4), 2);
+        assert_eq!(auto_threads(8), 4);
+        assert_eq!(auto_threads(12), 6);
+        assert_eq!(auto_threads(32), 8);
+    }
 }

@@ -163,6 +163,7 @@ fn transcribe_file(path: &str) -> Result<()> {
         prompt: &prompt,
         light: false,
         abort: None,
+        threads: settings.threads,
     };
     let start = Instant::now();
     let raw = t.transcribe(&samples, &request)?;
@@ -176,6 +177,7 @@ fn transcribe_file(path: &str) -> Result<()> {
     println!("raw:       {raw}");
     println!("cleaned:   {}", cleanup::clean(&raw, &settings, &dict, &snippets, &commands));
     println!("cpu:       {}", whisper_rs::print_system_info());
+    println!("threads:   {}", transcriber::thread_count(settings.threads));
     println!("time:      {first:.2?} (incl. model load), {second:.2?} (model loaded)");
     Ok(())
 }
