@@ -246,8 +246,8 @@ fn dirs() -> ProjectDirs {
 }
 
 /// The app used to be called mc-voice. Moves its settings, history and models folders
-/// to the me-voice names (once, when the new ones don't exist yet) and swaps the old
-/// start-at-login entry for the new one. A move fails harmlessly while the old app is
+/// to the me-voice names (once, when the new ones don't exist yet). The tray app also
+/// swaps the old start-at-login entry (`login::replace_old_entry`). A move fails harmlessly while the old app is
 /// still running; it is tried again on the next start.
 pub fn migrate_from_mc_voice() {
     if home_override().is_some() {
@@ -266,9 +266,6 @@ pub fn migrate_from_mc_voice() {
                 Err(e) => notes.push(format!("could not move {}: {e}", from.display())),
             }
         }
-    }
-    if crate::ui::settings::replace_old_login_entry() {
-        notes.push("replaced the mc-voice start-at-login entry".into());
     }
     // Log only after the moves: writing the log first would create the new folder.
     notes.iter().for_each(|n| crate::app::log::write(n));

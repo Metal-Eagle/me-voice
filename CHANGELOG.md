@@ -1,16 +1,20 @@
 # Changelog
 
+## 2.4.2 - 2026-11-21
+
+- Fixed: a black console window no longer flashes on Windows when the settings open, or when you turn **Start at login** on or off. me-voice now changes the start-at-login entry directly instead of running `reg.exe`.
+
 ## 2.4.1 - 2026-11-20
 
-- New: **Download button for the Kokoro voice** (Voice page). When Kokoro · Heart isn't on this PC yet, click Download: the model, the Heart voice and the pronunciation dictionaries (332 MB) are fetched with a progress bar and checked against their checksums.
+- New: **Download button for the Kokoro voice** (Voice page). When Kokoro Â· Heart isn't on this PC yet, click Download: the model, the Heart voice and the pronunciation dictionaries (332 MB) are fetched with a progress bar and checked against their checksums.
 - Includes everything from 2.4.0 below (2.4.0 itself was never published: its Windows build failed on GitHub).
 
 ## 2.4.0 - 2026-11-20
 
 Faster on slower computers: much less waiting after you stop talking.
 
-- New: **Transcribe while you talk** (Speech → Speed, on by default). Each pause is turned into text while you keep talking, so only the last bit is left when you stop. On an older laptop a 22-second dictation went from about 16 s of waiting to well under a second.
-- New: **Low-power mode** (Speech → Speed). Keeps the model loaded, updates the live text less often, skips the AI polish and doesn't prepare the voice while you talk.
+- New: **Transcribe while you talk** (Speech â†’ Speed, on by default). Each pause is turned into text while you keep talking, so only the last bit is left when you stop. On an older laptop a 22-second dictation went from about 16 s of waiting to well under a second.
+- New: **Low-power mode** (Speech â†’ Speed). Keeps the model loaded, updates the live text less often, skips the AI polish and doesn't prepare the voice while you talk.
 - New: **CPU threads** setting. Automatic now uses about one thread per physical core, which is faster on laptops with hyperthreading.
 - The speech model starts loading the moment you start talking, instead of when you stop.
 - The live text slows down by itself on slow computers, so it never keeps the processor busy non-stop, and it waits while finished sentences are transcribed.
@@ -58,7 +62,7 @@ Faster on slower computers: much less waiting after you stop talking.
 - New: **me-voice talks back.** It uses Kokoro (Heart voice, full quality), running on this PC, to tell you what's happening. Everything is set up on the new **Voice** page: voice, speed, volume, how it addresses you ("sir", "ma'am" or a name you type), and a switch and play button for every line it can say.
 - New: after you dictate to T3 Code, it says "Message sent" or "New session started". It then follows that thread and says when the agent is working, still working (named per thread, every 1, 2 or 5 minutes, or never), needs your OK, has a question (read out), is finished, or ran into an error.
 - New: after a question or "Finished" it listens for a short answer. "Yes" or "read it" reads the answer in short pieces, "more" goes on, "repeat", "stop", "status" (which threads are busy) and "no" or "that's all" do what they say. Anything else is sent as your next message to the same thread. Pressing the shortcut while it talks cuts it off.
-- New: an optional spoken stop sound ("Got it, sir.") instead of the beep, under Voice → Listening stops.
+- New: an optional spoken stop sound ("Got it, sir.") instead of the beep, under Voice â†’ Listening stops.
 - Note: approving a T3 request by voice isn't possible, because T3 Code has no way for another program to do it. Approve in T3 Code.
 
 ## 1.7.0 - 2026-10-28
@@ -68,7 +72,7 @@ Faster on slower computers: much less waiting after you stop talking.
 ## 1.6.0 - 2026-10-28
 
 - Changed: when dictating to T3 Code from another program, no thread is picked until you press a number key, and nothing is sent until you do. If you're done talking without picking, the card stays open ("Pick a thread") and the text goes to the thread you then pick; after 30 seconds without a pick, or on Escape, it is dropped.
-- New: dictating inside T3 Code picks the thread open there right away, so the text is sent to it as before. 1–6 or 0 still send it elsewhere.
+- New: dictating inside T3 Code picks the thread open there right away, so the text is sent to it as before. 1â€“6 or 0 still send it elsewhere.
 
 ## 1.5.1 - 2026-10-28
 
@@ -77,11 +81,11 @@ Faster on slower computers: much less waiting after you stop talking.
 
 ## 1.5.0 - 2026-10-28
 
-- New: when dictating to T3 Code, the listening card lists the threads you opened most recently, with the one the text will go to highlighted. Press 1–6 (top row or numpad) while talking to send it to a different thread instead. Press 0 to start a new thread: the list switches to your recent projects (the current thread's project is picked), and 1–6 picks another one; 0 again goes back to the threads. The number keys are only taken over while you dictate to T3.
+- New: when dictating to T3 Code, the listening card lists the threads you opened most recently, with the one the text will go to highlighted. Press 1â€“6 (top row or numpad) while talking to send it to a different thread instead. Press 0 to start a new thread: the list switches to your recent projects (the current thread's project is picked), and 1â€“6 picks another one; 0 again goes back to the threads. The number keys are only taken over while you dictate to T3.
 
 ## 1.4.0 - 2026-10-27
 
-- New: **Dictate to T3 Code**, a new action for an extra shortcut under Settings → Shortcut → More shortcuts. Give it its own key (F6, say) and keep F5 for normal dictation: what you say on that key goes straight to the T3 Code thread you opened last, from whatever program you are in. "New chat" still starts a new chat in the same project, and if T3 Code can't take it the text is typed instead.
+- New: **Dictate to T3 Code**, a new action for an extra shortcut under Settings â†’ Shortcut â†’ More shortcuts. Give it its own key (F6, say) and keep F5 for normal dictation: what you say on that key goes straight to the T3 Code thread you opened last, from whatever program you are in. "New chat" still starts a new chat in the same project, and if T3 Code can't take it the text is typed instead.
 
 ## 1.3.1 - 2026-10-27
 
@@ -96,15 +100,15 @@ Faster on slower computers: much less waiting after you stop talking.
 
 ## 1.3.0 - 2026-10-27
 
-- New: **T3 native** under Settings → Profiles → **Insert text by**, offered only on a profile for T3 Code, when it's installed on this computer. That profile then sends what you dictate straight to the T3 Code thread you opened last, as its next message, without pasting. Start with "new chat" (or "nieuwe chat") to start a new chat in the same project instead, with the rest as its first message. If T3 Code can't take it, the text is typed instead.
+- New: **T3 native** under Settings â†’ Profiles â†’ **Insert text by**, offered only on a profile for T3 Code, when it's installed on this computer. That profile then sends what you dictate straight to the T3 Code thread you opened last, as its next message, without pasting. Start with "new chat" (or "nieuwe chat") to start a new chat in the same project instead, with the rest as its first message. If T3 Code can't take it, the text is typed instead.
 - When text is typed out instead of pasted, line breaks go in as Shift+Enter. Saying "new line" no longer sends a chat message or a prompt halfway through.
-- Fixed: on Settings → Words the snippet boxes were squashed to the width of their headings, and remove buttons there and next to a profile's apps showed an empty box. The voice-command table no longer makes the page wider than the window, which cut off the stop and send word boxes.
+- Fixed: on Settings â†’ Words the snippet boxes were squashed to the width of their headings, and remove buttons there and next to a profile's apps showed an empty box. The voice-command table no longer makes the page wider than the window, which cut off the stop and send word boxes.
 - Internal: a build warning about an unused import is gone.
 
 ## 1.1.0 - 2026-10-27
 
 - Snippets now live in dictionary.json next to words and replacements. An existing snippets.json is merged in automatically (kept as snippets.json.bak).
-- The snippet table on Settings → Words matches the voice-commands table.
+- The snippet table on Settings â†’ Words matches the voice-commands table.
 
 ## 1.0.0 - 2026-10-26
 
@@ -116,13 +120,13 @@ Faster on slower computers: much less waiting after you stop talking.
 
 ## 0.11.0 - 2026-10-23
 
-- New: an **Updates** row on Settings → About. **Check now** looks for a new version, and **Install now** downloads and installs it.
+- New: an **Updates** row on Settings â†’ About. **Check now** looks for a new version, and **Install now** downloads and installs it.
 - Updates read your GitHub login straight from the Windows Credential Manager instead of running Git.
 
 ## 0.10.0 - 2026-10-23
 
 - New: automatic updates. me-voice checks for a new version a minute after it starts and then every 6 hours, downloads it in the background, shows a notification and installs it once you're not dictating. It restarts by itself afterwards.
-- New: **Check for updates…** in the tray menu, and an **Automatic updates** switch in Settings → Behaviour.
+- New: **Check for updatesâ€¦** in the tray menu, and an **Automatic updates** switch in Settings â†’ Behaviour.
 - Updates use the GitHub login Git has saved on this computer, because the repository is private.
 - Internal: the source code is grouped into folders and the build scripts moved to `scripts/`.
 
@@ -134,7 +138,7 @@ Faster on slower computers: much less waiting after you stop talking.
 
 ## 0.9.0 - 2026-10-23
 
-- New: **AI clean-up**. Let a local AI server (Ollama, LM Studio) or the Claude CLI fix grammar and punctuation after you dictate. Off by default; set it up under Settings → AI.
+- New: **AI clean-up**. Let a local AI server (Ollama, LM Studio) or the Claude CLI fix grammar and punctuation after you dictate. Off by default; set it up under Settings â†’ AI.
 - New: **Command Mode**. Select text, hold the Command shortcut and say what to do with it ("make this shorter", "translate to Dutch").
 - New: **screen context**. The app name, window title and text near the cursor help spell names right.
 - Faster AI: the AI is started while you speak, so the text is ready sooner after you stop. The Claude CLI also starts without your MCP servers and skills.
@@ -144,4 +148,4 @@ Faster on slower computers: much less waiting after you stop talking.
 
 - New: **Dictate paragraph**. Add an extra shortcut with the action "Dictate paragraph" and a window opens that shows what you say as you speak. Lock in each sentence by saying "new line", pausing for the set time (default 1.5 s) or pressing the shortcut again. Then paste the whole paragraph, copy it, or clear it.
 - New: say "scratch that" to remove the last line; end a sentence with "stop" or "send" to paste.
-- New: Settings → About shows these release notes.
+- New: Settings â†’ About shows these release notes.

@@ -417,6 +417,9 @@ impl App {
         #[cfg(windows)]
         if !crate::settings::is_dev() {
             login::remove_dev_entry();
+            if login::replace_old_entry() {
+                log::write("replaced the mc-voice start-at-login entry");
+            }
         }
         #[cfg(target_os = "macos")]
         if app.settings.start_at_login {

@@ -535,27 +535,3 @@ fn open_path(path: &Path) {
     #[cfg(all(unix, not(target_os = "macos")))]
     let _ = std::process::Command::new("xdg-open").arg(path).spawn();
 }
-
-#[cfg(target_os = "windows")]
-const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
-
-/// Windows only: if the old "mc-voice" start-at-login entry exists, removes it and adds
-/// the me-voice one instead. Returns whether it did.
-pub fn replace_old_login_entry() -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        let reg = |args: &[&str]| std::process::Command::new("reg").args(args).output().is_ok_and(|o| o.status.success());
-        if reg(&["query", RUN_KEY, "/v", "mc-voice"]) {
-            if let Err(e) = crate::app::login::set_enabled(true) {
-                crate::app::log::write(&format!("could not migrate start at login: {e:#}"));
-                return false;
-            }
-            if !reg(&["delete", RUN_KEY, "/v", "mc-voice", "/f"]) {
-                crate::app::log::write("could not remove the old mc-voice start-at-login entry");
-                return false;
-            }
-            return true;
-        }
-    }
-    false
-}
