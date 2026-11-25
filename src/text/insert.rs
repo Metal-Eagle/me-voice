@@ -76,14 +76,7 @@ fn type_text(enigo: &mut Enigo, text: &str) -> Result<()> {
 /// Presses Undo (Ctrl+Z, Cmd+Z on macOS) once in the focused app: undoes the last paste.
 pub fn undo() -> Result<()> {
     wait_for_keys_released(Duration::from_millis(1500));
-    let mut enigo = Enigo::new(&EnigoSettings::default()).map_err(|e| anyhow!("keyboard: {e}"))?;
-    let modifier = if cfg!(target_os = "macos") { Key::Meta } else { Key::Control };
-    let undo_keys = (|| {
-        enigo.key(modifier, Press)?;
-        enigo.key(Key::Unicode('z'), Click)?;
-        enigo.key(modifier, Release)
-    })();
-    undo_keys.map_err(|e| anyhow!("undo: {e}"))
+    shortcut('z').map_err(|e| anyhow!("undo: {e}"))
 }
 
 /// Copies the selected text of the focused app (Ctrl+C) and puts the old clipboard back.
@@ -93,14 +86,7 @@ pub fn copy_selection() -> Result<String> {
     let mut clipboard = Clipboard::new()?;
     let previous = clipboard.get_text().ok();
     let _ = clipboard.clear();
-    let mut enigo = Enigo::new(&EnigoSettings::default()).map_err(|e| anyhow!("keyboard: {e}"))?;
-    let modifier = if cfg!(target_os = "macos") { Key::Meta } else { Key::Control };
-    let copy_keys = (|| {
-        enigo.key(modifier, Press)?;
-        enigo.key(Key::Unicode('c'), Click)?;
-        enigo.key(modifier, Release)
-    })();
-    copy_keys.map_err(|e| anyhow!("copy: {e}"))?;
+    shortcut('c').map_err(|e| anyhow!("copy: {e}"))?;
     // Apps put the selection on the clipboard a little later; wait for it briefly.
     let start = Instant::now();
     let mut selection = String::new();
@@ -124,13 +110,7 @@ fn paste(enigo: &mut Enigo, text: &str, press_enter: bool) -> Result<()> {
     // Let the clipboard change settle before the app is asked to read it.
     sleep(Duration::from_millis(40));
 
-    let modifier = if cfg!(target_os = "macos") { Key::Meta } else { Key::Control };
-    let paste_keys = (|| {
-        enigo.key(modifier, Press)?;
-        enigo.key(Key::Unicode('v'), Click)?;
-        enigo.key(modifier, Release)
-    })();
-    paste_keys.map_err(|e| anyhow!("pasting: {e}"))?;
+    shortcut('v').map_err(|e| anyhow!("pasting: {e}"))?;
     if press_enter {
         // Give the app a moment to insert the text before sending it.
         sleep(Duration::from_millis(150));
@@ -145,6 +125,31 @@ fn paste(enigo: &mut Enigo, text: &str, press_enter: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Presses Ctrl+`letter` (Cmd+`letter` on macOS), e.g. 'v' to paste.
+///
+/// On macOS this runs on the main thread: for `Key::Unicode` enigo looks the key up in the
+/// keyboard layout (TSMGetInputSourceProperty), which macOS only allows on the main thread
+/// and otherwise aborts the app. We insert from worker threads, so the app crashed now and
+/// then (often after switching apps). A fixed key code would avoid the lookup but presses
+/// the wrong key on other layouts (on AZERTY, Cmd+Z would become Cmd+W).
+fn shortcut(letter: char) -> Result<(), String> {
+    let press = move || -> Result<(), String> {
+        let mut enigo = Enigo::new(&EnigoSettings::default()).map_err(|e| format!("keyboard: {e}"))?;
+        let modifier = if cfg!(target_os = "macos") { Key::Meta } else { Key::Control };
+        let keys = (|| {
+            enigo.key(modifier, Press)?;
+            enigo.key(Key::Unicode(letter), Click)?;
+            enigo.key(modifier, Release)
+        })();
+        keys.map_err(|e| e.to_string())
+    };
+    // Runs directly when already on the main thread (the fix and paragraph windows).
+    #[cfg(target_os = "macos")]
+    return dispatch2::run_on_main(|_| press());
+    #[cfg(not(target_os = "macos"))]
+    press()
 }
 
 /// Waits (up to `max`) until Shift, Ctrl, Alt and the Windows keys are all up.

@@ -2825,6 +2825,7 @@ dependencies = [
  "chrono",
  "cpal",
  "directories",
+ "dispatch2",
  "eframe",
  "enigo",
  "epaint_default_fonts",
