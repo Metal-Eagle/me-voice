@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.3 - 2026-11-25
+
+- Fixed: the dictation shortcut stopped working after you clicked a shortcut button in Settings and then clicked away. Capturing a new shortcut now ends when the settings window loses focus or you change page, and your shortcuts work again right away.
+
 ## 2.4.2 - 2026-11-21
 
 - Fixed: a black console window no longer flashes on Windows when the settings open, or when you turn **Start at login** on or off. me-voice now changes the start-at-login entry directly instead of running `reg.exe`.
