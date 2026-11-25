@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.4 - 2026-11-25
+
+- Fixed (macOS): me-voice sometimes quit unexpectedly while pasting, often when you switched windows before the text was in. Pasting, undo ("scratch that") and copying the selection now press their shortcut on the app's main thread, which macOS requires. Other keyboard layouts such as AZERTY and Dvorak keep working.
+
 ## 2.4.3 - 2026-11-25
 
 - Fixed: the dictation shortcut stopped working after you clicked a shortcut button in Settings and then clicked away. Capturing a new shortcut now ends when the settings window loses focus or you change page, and your shortcuts work again right away.
