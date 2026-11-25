@@ -154,6 +154,13 @@ impl SettingsApp {
         }
     }
 
+    /// Stops waiting for a new shortcut and gives the main app its shortcuts back.
+    pub(super) fn cancel_capture(&mut self) {
+        if self.capturing.take().is_some() {
+            let _ = ipc::send(Command::ResumeHotkey);
+        }
+    }
+
     pub(super) fn read_captured_keys(&mut self, ctx: &egui::Context) {
         // Finish on the first non-modifier key; modifiers come from the live keyboard
         // state, which is more reliable than the event's own copy (e.g. Ctrl+Alt on Windows).

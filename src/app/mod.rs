@@ -677,10 +677,14 @@ impl App {
             // Fully release the shortcut while the settings window captures a new one,
             // otherwise Windows keeps swallowing that key combination.
             Command::PauseHotkey => {
+                log::write("shortcuts paused while settings captures a key");
                 self.hotkey_paused = true;
                 self.unregister_hotkeys();
             }
             Command::ResumeHotkey => {
+                if self.hotkey_paused {
+                    log::write("shortcuts resumed");
+                }
                 self.hotkey_paused = false;
                 self.settings = Settings::load();
                 self.hotkeys_dirty = true;

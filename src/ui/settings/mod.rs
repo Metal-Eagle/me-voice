@@ -223,7 +223,12 @@ impl eframe::App for SettingsApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         crate::ui::text_menu::show_pending(ui.ctx(), frame);
         if self.capturing.is_some() {
-            self.read_captured_keys(ui.ctx());
+            // Keys pressed in another app never reach this window, so stop waiting for them.
+            if ui.ctx().input(|i| i.focused) {
+                self.read_captured_keys(ui.ctx());
+            } else {
+                self.cancel_capture();
+            }
         }
         self.remember_window(ui.ctx());
         self.take_screenshot(ui.ctx());
@@ -270,6 +275,9 @@ impl eframe::App for SettingsApp {
                 (Page::About, Icon::Info, "About"),
             ] {
                 if theme::nav_item(ui, icon, label, self.page == page) {
+                    if page != self.page {
+                        self.cancel_capture();
+                    }
                     if page == Page::History || page == Page::Dashboard {
                         self.history.entries = crate::text::history::load();
                     }
